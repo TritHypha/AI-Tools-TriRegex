@@ -1,0 +1,39 @@
+{
+  "name": "triregex",
+  "version": "0.1.0",
+  "description": "Ternary streaming pattern matching — ReDoS-immune by construction. Non-backtracking automaton, compile-time cost certificate, fail-closed SECURITY_VETO on uncertifiable patterns, three-valued streaming verdicts (+1 match / 0 indeterminate / -1 refuse) with fail-closed collapse at end-of-stream.",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "AUDIT.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test"
+  },
+  "keywords": [
+    "regex",
+    "redos",
+    "streaming",
+    "automaton",
+    "non-backtracking",
+    "ternary",
+    "security",
+    "fail-closed",
+    "linear-time"
+  ],
+  "author": "TritHypha <hello@trithypha.dev>",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.8.0"
+  }
+}
