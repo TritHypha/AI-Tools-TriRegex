@@ -11,7 +11,7 @@
 // Contact hello@trithypha.dev · Apache-2.0.
 // =============================================================================
 import type { Compiled } from "./compile.ts";
-import { inRanges } from "./compile.ts";
+import { inRangesWithCost } from "./compile.ts";
 import type { EngineStats, MatchOutcome, TriVerdict } from "./types.ts";
 
 const INF = 0x7fffffff;
@@ -54,10 +54,15 @@ export class TriMatcher {
     let curMinStart = INF;
     let impossible = false;
     const stats: EngineStats = { chars: 0, steps: 0, maxActive: 0 };
+    let ended: MatchOutcome | undefined;
 
     // position 0: the atStart closure
     cur.set(c.initStart.bits);
-    for (let s = 0; s < c.slots; s++) if ((cur[s >> 5]! >>> (s & 31)) & 1) { curStart[s] = 0; curMinStart = 0; }
+    stats.steps += words;
+    for (let s = 0; s < c.slots; s++) {
+      stats.steps++;
+      if ((cur[s >> 5]! >>> (s & 31)) & 1) { curStart[s] = 0; curMinStart = 0; }
+    }
     if (c.initStart.matched) { matched = true; matchStart = 0; matchEnd = 0; }
 
     // leftmost-longest: an earlier start always wins; at the same start, the
@@ -77,10 +82,14 @@ export class TriMatcher {
       // start is strictly later than matchStart and can never win — skip.
       if (pos > 0 && !c.anchoredStart && !matched) {
         const im = c.initMid;
-        for (let w = 0; w < words; w++) cur[w] = (cur[w]! | im.bits[w]!) >>> 0;
-        for (let s = 0; s < c.slots; s++)
+        for (let w = 0; w < words; w++) {
+          cur[w] = (cur[w]! | im.bits[w]!) >>> 0;
+          stats.steps++;
+        }
+        for (let s = 0; s < c.slots; s++) {
+          stats.steps++;
           if ((im.bits[s >> 5]! >>> (s & 31)) & 1 && curStart[s]! > pos) curStart[s] = pos;
-        stats.steps += 2 * words;
+        }
         if (im.matched) latch(pos, pos); // pattern matches empty at this position
       }
       nxt.fill(0);
@@ -88,19 +97,25 @@ export class TriMatcher {
       let active = 0;
       let minNext = INF;
       for (let s = 0; s < c.slots; s++) {
+        stats.steps++;
         if (!((cur[s >> 5]! >>> (s & 31)) & 1)) continue;
         active++;
-        stats.steps += 1;
         const instr = c.prog[c.slotToInstr[s]!]!;
         if (instr.op !== "char") continue; // an eol assertion dies on a consumed char
-        if (!inRanges(cp, instr.ranges)) continue;
+        const rangeResult = inRangesWithCost(cp, instr.ranges);
+        stats.steps += rangeResult.comparisons;
+        if (!rangeResult.matched) continue;
         const row = c.rows[s]!;
-        for (let w = 0; w < words; w++) nxt[w] = (nxt[w]! | row[w]!) >>> 0;
+        for (let w = 0; w < words; w++) {
+          nxt[w] = (nxt[w]! | row[w]!) >>> 0;
+          stats.steps++;
+        }
         const st = curStart[s]!;
-        for (let t = 0; t < c.slots; t++)
+        for (let t = 0; t < c.slots; t++) {
+          stats.steps++;
           if ((row[t >> 5]! >>> (t & 31)) & 1 && nxtStart[t]! > st) nxtStart[t] = st;
+        }
         if (st < minNext) minNext = st;
-        stats.steps += 2 * words;
         if (c.matchOnConsume[s]) latch(st, pos + 1);
       }
       if (active > stats.maxActive) stats.maxActive = active;
@@ -114,20 +129,30 @@ export class TriMatcher {
 
     return {
       feed: (chunk: string): TriVerdict => {
+        if (ended !== undefined) {
+          throw new Error("TPRX-STREAM: feed() called after end()");
+        }
         for (const ch of chunk) feedChar(ch.codePointAt(0)!);
         return matched ? 1 : impossible ? -1 : 0;
       },
       end: (): MatchOutcome => {
+        if (ended !== undefined) return ended;
         // resolve parked end-of-line assertions at the true boundary
         for (let s = 0; s < c.slots; s++) {
+          stats.steps++;
           if (!((cur[s >> 5]! >>> (s & 31)) & 1)) continue;
           const instr = c.prog[c.slotToInstr[s]!]!;
-          if (instr.op === "eol" && c.eolResolves(s)) latch(curStart[s]!, pos);
+          if (instr.op === "eol" && c.eolResolves[s]) latch(curStart[s]!, pos);
         }
         // a fresh empty match AT end-of-input (e.g. `$`, `a*$` tails)
-        if (!matched && (pos === 0 || !c.anchoredStart) && c.endFreshMatches(pos === 0)) latch(pos, pos);
+        if (
+          !matched &&
+          (pos === 0 || !c.anchoredStart) &&
+          c.endFreshMatches[pos === 0 ? 1 : 0]
+        ) latch(pos, pos);
         // K3 collapse at the boundary: indeterminate becomes refuse
-        return matched ? { verdict: 1, span: [matchStart, matchEnd] } : { verdict: -1 };
+        ended = matched ? { verdict: 1, span: [matchStart, matchEnd] } : { verdict: -1 };
+        return ended;
       },
       stats: () => ({ ...stats }),
     };

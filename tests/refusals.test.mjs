@@ -58,6 +58,51 @@ test("budget bounds veto, never run slow", () => {
   assert.equal(tight.code, "TPRX-BUDGET");
 });
 
+test("invalid runtime budgets cannot disable the compiler limits", () => {
+  for (const budget of [
+    { maxInstructions: Number.NaN },
+    { maxInstructions: Number.POSITIVE_INFINITY },
+    { maxInstructions: 0 },
+    { maxPatternLength: -1 },
+    { maxRepetition: 1.5 },
+  ]) {
+    const r = compile("a+", { budget });
+    assert.equal(r.ok, false, `must veto ${JSON.stringify(budget)}`);
+    if (!r.ok) {
+      assert.equal(r.code, "TPRX-BUDGET");
+      assert.match(r.reason, /finite safe integer|>=/);
+    }
+  }
+
+  const fallback = compile("a", {
+    budget: { maxInstructions: undefined },
+  });
+  assert.equal(fallback.ok, true);
+});
+
+test("the terminal MATCH instruction is included in maxInstructions", () => {
+  const tooSmall = compile("a", { budget: { maxInstructions: 1 } });
+  assert.equal(tooSmall.ok, false);
+  if (!tooSmall.ok) assert.equal(tooSmall.code, "TPRX-BUDGET");
+
+  const exact = compile("a", { budget: { maxInstructions: 2 } });
+  assert.equal(exact.ok, true);
+  if (exact.ok) assert.equal(exact.certificate.instructions, 2);
+});
+
+test("stacked, lazy, and possessive quantifier spellings refuse instead of changing meaning", () => {
+  for (const pattern of ["a+?", "a*?", "a{2}?", "a++", "a**", "a{2}+"]) {
+    const r = compile(pattern);
+    assert.equal(r.ok, false, `must refuse ambiguous modifier ${pattern}`);
+    if (!r.ok) {
+      assert.equal(r.code, "TPRX-UNSUPPORTED");
+      assert.match(r.reason, /stacked|lazy|possessive/);
+    }
+  }
+
+  assert.equal(compile("(a+)+").ok, true);
+});
+
 test("compile never throws on hostile pattern content", () => {
   const hostile = ["(((((", ")))))", "[^]", "[]", "\\u{110000}", "a{999999999}", "(?", "(?<", "|||", "{,}", "\\u12", "\\x"];
   for (const p of hostile) {

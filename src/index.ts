@@ -9,7 +9,7 @@ import { TriMatcher } from "./engine.ts";
 import type { Budget, CompileVeto, CostCertificate } from "./types.ts";
 import { DEFAULT_BUDGET } from "./types.ts";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.1.1";
 
 export {
   MATCH, INDETERMINATE, SECURITY_VETO, DEFAULT_BUDGET,
@@ -43,7 +43,34 @@ export interface CompileOk {
  * so the caller's fail-closed path is a value check, not exception handling.
  */
 export function compile(pattern: string, opts: CompileOptions = {}): CompileOk | CompileVeto {
-  const budget: Budget = { ...DEFAULT_BUDGET, ...(opts.budget ?? {}) };
+  if (typeof pattern !== "string") {
+    return {
+      ok: false,
+      verdict: -1,
+      code: "TPRX-PARSE",
+      reason: "pattern must be a string",
+    };
+  }
+  const supplied = opts.budget ?? {};
+  const budget: Budget = {
+    maxInstructions: supplied.maxInstructions ?? DEFAULT_BUDGET.maxInstructions,
+    maxPatternLength: supplied.maxPatternLength ?? DEFAULT_BUDGET.maxPatternLength,
+    maxRepetition: supplied.maxRepetition ?? DEFAULT_BUDGET.maxRepetition,
+  };
+  for (const [name, value, minimum] of [
+    ["maxInstructions", budget.maxInstructions, 1],
+    ["maxPatternLength", budget.maxPatternLength, 0],
+    ["maxRepetition", budget.maxRepetition, 0],
+  ] as const) {
+    if (!Number.isSafeInteger(value) || value < minimum) {
+      return {
+        ok: false,
+        verdict: -1,
+        code: "TPRX-BUDGET",
+        reason: `budget.${name} must be a finite safe integer >= ${minimum}`,
+      };
+    }
+  }
   const parsed = parsePattern(pattern, budget);
   if (!parsed.ok) return parsed;
   const compiled = compileAst(parsed.ast, budget, pattern.length);

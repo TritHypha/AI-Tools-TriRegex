@@ -99,3 +99,18 @@ test("long stream in many small chunks: bounded state, no rewind needed", () => 
   assert.deepEqual([...out.span], [1500, 1506]);
   assert.ok(s.stats().maxActive <= c.certificate.restingStates);
 });
+
+test("stream boundary is explicit: end is idempotent and feed-after-end refuses", () => {
+  const c = compile("abc");
+  assert.equal(c.ok, true);
+  if (!c.ok) return;
+
+  const s = c.matcher.stream();
+  assert.equal(s.feed("abc"), 1);
+  const first = s.end();
+  assert.deepEqual(s.end(), first, "re-reading the boundary result is stable");
+  assert.throws(
+    () => s.feed("unverified trailing bytes"),
+    /TPRX-STREAM: feed\(\) called after end\(\)/,
+  );
+});

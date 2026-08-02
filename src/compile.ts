@@ -32,6 +32,10 @@ class Emitter {
     return this.prog.length - 1;
   }
 
+  finish(): void {
+    this.push({ op: "match" });
+  }
+
   emit(n: AstNode): void {
     switch (n.kind) {
       case "empty": return;
@@ -104,17 +108,17 @@ export interface Compiled {
   initMid: Closure;
   anchoredStart: boolean;
   certificate: CostCertificate;
-  /** resolve an eol resting slot at end-of-input → does it reach MATCH? */
-  eolResolves: (slot: number) => boolean;
-  /** a fresh start AT end-of-input (empty-suffix match), len==0 ⇒ atStart */
-  endFreshMatches: (atStart: boolean) => boolean;
+  /** Precomputed: resolving this eol resting slot at end reaches MATCH. */
+  eolResolves: Uint8Array;
+  /** Precomputed fresh empty match at end: index 0 = mid-input, 1 = at start. */
+  endFreshMatches: readonly [boolean, boolean];
 }
 
 export function compileAst(ast: AstNode, budget: Budget, patternLength: number): Compiled | CompileVeto {
   const em = new Emitter(budget);
   try {
     em.emit(ast);
-    em.prog.push({ op: "match" });
+    em.finish();
   } catch (e) {
     if (e instanceof VetoError) return e.v;
     throw e;
@@ -174,23 +178,44 @@ export function compileAst(ast: AstNode, budget: Budget, patternLength: number):
   const initMid = walk([0], false, false, true);
   const anchoredStart = !initMid.matched && initMid.bits.every((w) => w === 0);
 
-  const eolMemo = new Map<number, boolean>();
-  const eolResolves = (slot: number): boolean => {
-    const hit = eolMemo.get(slot);
-    if (hit !== undefined) return hit;
-    const r = walk([slotToInstr[slot]! + 1], false, true, false).matched;
-    eolMemo.set(slot, r);
-    return r;
-  };
-  const endFreshMatches = (atStart: boolean): boolean => walk([0], atStart, true, false).matched;
+  const eolResolves = new Uint8Array(slots);
+  for (let s = 0; s < slots; s++) {
+    const i = slotToInstr[s]!;
+    if (prog[i]!.op === "eol") {
+      eolResolves[s] = walk([i + 1], false, true, false).matched ? 1 : 0;
+    }
+  }
+  const endFreshMatches: readonly [boolean, boolean] = [
+    walk([0], false, true, false).matched,
+    walk([0], true, true, false).matched,
+  ];
+
+  let maxRangeComparisons = 0;
+  for (const ins of prog) {
+    if (ins.op !== "char" || ins.ranges.length === 0) continue;
+    maxRangeComparisons = Math.max(
+      maxRangeComparisons,
+      Math.floor(Math.log2(ins.ranges.length)) + 1,
+    );
+  }
+  // One character:
+  //   optional fresh-start merge: words + slots
+  //   active-set scan: slots
+  //   worst case for every slot: range search + row union + start propagation.
+  const perCharWorkBound =
+    words + slots +
+    slots +
+    slots * (maxRangeComparisons + words + slots);
+  // Stream construction initialises one bitset and scans its slots; end() scans
+  // each slot once. EOL/fresh-end reachability is precomputed above.
+  const boundaryWorkBound = words + 2 * slots;
 
   const certificate: CostCertificate = {
     instructions: n,
     restingStates: slots,
-    // per char worst case: slots iteration visits (1 step each) + per matching
-    // slot a row-union + start-scan (2·words each) + the fresh-start union
-    // (2·words) — (2w+1)(s+1) = 2ws + s + 2w + 1 dominates every term.
-    perCharWorkBound: (2 * words + 1) * (slots + 1),
+    perCharWorkBound,
+    boundaryWorkBound,
+    maxRangeComparisons,
     memoryBoundBytes: slots * words * 4 + n * 24 + words * 8 + slots * 8,
     patternLength,
     anchoredStart,
@@ -202,15 +227,24 @@ export function compileAst(ast: AstNode, budget: Budget, patternLength: number):
   };
 }
 
-export function inRanges(cp: number, ranges: Ranges): boolean {
+export function inRangesWithCost(
+  cp: number,
+  ranges: Ranges,
+): { matched: boolean; comparisons: number } {
   let lo = 0;
   let hi = ranges.length - 1;
+  let comparisons = 0;
   while (lo <= hi) {
+    comparisons++;
     const mid = (lo + hi) >> 1;
     const r = ranges[mid]!;
     if (cp < r[0]) hi = mid - 1;
     else if (cp > r[1]) lo = mid + 1;
-    else return true;
+    else return { matched: true, comparisons };
   }
-  return false;
+  return { matched: false, comparisons };
+}
+
+export function inRanges(cp: number, ranges: Ranges): boolean {
+  return inRangesWithCost(cp, ranges).matched;
 }

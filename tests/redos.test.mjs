@@ -24,7 +24,9 @@ test("classic ReDoS patterns run linear and within the certificate bound", () =>
     assert.equal(r.ok, true, `${p} compiles (safe here, no veto needed)`);
     const out = r.matcher.test(evil);
     assert.equal(out.verdict, expected, `${p} verdict on the evil input`);
-    const bound = (out.stats.chars + 2) * r.certificate.perCharWorkBound;
+    const bound =
+      out.stats.chars * r.certificate.perCharWorkBound +
+      r.certificate.boundaryWorkBound;
     assert.ok(out.stats.steps <= bound,
       `${p}: steps ${out.stats.steps} must be ≤ certified ${bound}`);
     assert.ok(out.stats.maxActive <= r.certificate.restingStates,
@@ -56,4 +58,21 @@ test("oversized automata are refused at compile — cost is bounded up front", (
   const r = compile("(x{999}){999}");
   assert.equal(r.ok, false);
   assert.equal(r.code, "TPRX-BUDGET");
+});
+
+test("certificate covers range lookup, start propagation, and boundary work", () => {
+  const r = compile("([a-fm-r0-7]+|z{1,4})$");
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+
+  assert.ok(r.certificate.maxRangeComparisons >= 2);
+  assert.ok(r.certificate.boundaryWorkBound > 0);
+
+  for (const input of ["abcdef0123!", "mmmmrrrr7777z", "z", ""]) {
+    const out = r.matcher.test(input);
+    const bound =
+      out.stats.chars * r.certificate.perCharWorkBound +
+      r.certificate.boundaryWorkBound;
+    assert.ok(out.stats.steps <= bound, `${input}: ${out.stats.steps} <= ${bound}`);
+  }
 });

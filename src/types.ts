@@ -36,12 +36,19 @@ export interface CostCertificate {
   /** Resting states (char/eol) — the active-set upper bound. */
   restingStates: number;
   /**
-   * Hard per-character work bound, in bitset word operations:
-   * one row-union per active resting state per char — activeMax × rowWords.
-   * Actual measured work is exposed by stats() and test-asserted ≤ this bound.
+   * Hard per-character work bound in the engine's certified work units. This
+   * includes active-slot tests, range-search comparisons, bitset unions, and
+   * leftmost-start propagation.
    */
   perCharWorkBound: number;
-  /** Approximate resident memory for the closure rows + state arrays, bytes. */
+  /** One-off stream initialisation plus end-of-stream work bound. */
+  boundaryWorkBound: number;
+  /** Maximum binary-search comparisons for one character-class membership test. */
+  maxRangeComparisons: number;
+  /**
+   * Portable accounting estimate for closure rows and state arrays. JavaScript
+   * object overhead is runtime-specific, so this is not a process-heap ceiling.
+   */
   memoryBoundBytes: number;
   /** Pattern length compiled. */
   patternLength: number;
@@ -88,7 +95,7 @@ export type Instr =
 export interface EngineStats {
   /** Code points consumed. */
   chars: number;
-  /** Bitset word operations performed (the certified unit of work). */
+  /** Certified work units performed; compare with the certificate bounds. */
   steps: number;
   /** Peak active resting-state count observed. */
   maxActive: number;

@@ -103,21 +103,34 @@ class P {
     const a = this.atom();
     if (!a.ok) return a;
     let node = a.ast;
-    for (;;) {
-      let min = -1;
-      let max = -1;
-      if (this.eat("*")) { min = 0; max = Infinity; }
-      else if (this.eat("+")) { min = 1; max = Infinity; }
-      else if (this.eat("?")) { min = 0; max = 1; }
-      else if (this.peek() === 0x7b /* { */) {
-        const q = this.quant(at);
-        if (!q.ok) return q;
-        const r = q.ast as { kind: "rep"; min: number; max: number };
-        min = r.min; max = r.max;
-      } else break;
+    let min = -1;
+    let max = -1;
+    if (this.eat("*")) { min = 0; max = Infinity; }
+    else if (this.eat("+")) { min = 1; max = Infinity; }
+    else if (this.eat("?")) { min = 0; max = 1; }
+    else if (this.peek() === 0x7b /* { */) {
+      const q = this.quant(at);
+      if (!q.ok) return q;
+      const r = q.ast as { kind: "rep"; min: number; max: number };
+      min = r.min; max = r.max;
+    }
+    if (min !== -1) {
       if (node.kind === "bol" || node.kind === "eol")
         return veto("TPRX-PARSE", "quantifier on an anchor", at);
       node = { kind: "rep", item: node, min, max };
+      const next = this.peek();
+      if (
+        next === 0x2a /* * */ ||
+        next === 0x2b /* + */ ||
+        next === 0x3f /* ? */ ||
+        next === 0x7b /* { */
+      ) {
+        return veto(
+          "TPRX-UNSUPPORTED",
+          "stacked, lazy, and possessive quantifier modifiers are refused; group explicitly if repetition is intended",
+          this.i,
+        );
+      }
     }
     return { ok: true, ast: node };
   }

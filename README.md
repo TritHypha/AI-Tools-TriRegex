@@ -30,10 +30,11 @@ The classic killers — `(a+)+$`, `(a|a)*$`, `([a-zA-Z]+)*$` — are *linear* he
 - Thompson NFA, **no backtracking, no rewind**: each code point is examined once.
 - All quantifiers expand **bounded** at compile (`{n,m}` capped; over-budget →
   veto). Automaton size is fixed before any input runs.
-- The hot loop is precomputed epsilon-closure **bitset unions**: input content
-  changes *which* states are active, never *how much* a character may cost.
-- The certificate's `perCharWorkBound` is asserted in the test suite against the
-  engine's own step counters on adversarial inputs.
+- Epsilon reachability and end-boundary resolution are precomputed. Runtime work
+  consists of bounded active-slot tests, range comparisons, bitset unions and
+  leftmost-start propagation.
+- The certificate's `perCharWorkBound` and `boundaryWorkBound` cover those
+  operations and are asserted against the engine's counters on adversarial input.
 
 ```js
 import { compile } from "triregex";
@@ -60,8 +61,9 @@ point** (astral-safe; spans count code points).
 **Refused by design** (compile-time `SECURITY_VETO`, named reason — never a
 silent literal, never a slow path): backreferences (`\1`, `\k<…>`) ·
 lookaround (`(?=` `(?!` `(?<=` `(?<!`) · named groups · inline flags ·
-`\b \B` (declared v0.2 candidate) · unknown alpha escapes · any pattern whose
-expanded automaton exceeds the budget.
+`\b \B` (declared v0.2 candidate) · lazy/possessive/stacked quantifier suffixes
+(`a+?`, `a++`, `a**`) · unknown alpha escapes · any pattern whose expanded
+automaton exceeds the budget.
 
 ## Honest bounds
 
@@ -71,8 +73,13 @@ expanded automaton exceeds the budget.
 - **`uniformScan`** disables the early exit only — it *reduces* data-dependent
   control flow; it is **not** a constant-time guarantee (JS/JIT gives none), and
   a dense fixed-shape scan is a declared v0.2 item.
-- Class membership checks add `O(log ranges)` per active state per char on top
-  of the certified word-op bound (ranges are budget-capped).
+- Class membership comparisons and leftmost-start propagation are included in
+  the certified work-unit bound.
+- Budget overrides are runtime-validated as finite safe integers; `NaN`,
+  infinity, fractions and invalid negative values cannot disable a limit.
+- `end()` is idempotent. `feed()` after `end()` throws the named
+  `TPRX-STREAM` lifecycle error rather than silently accepting unchecked suffix
+  data.
 - The engine matches; it does not replace a parser. Balanced/nested syntax
   (`Array<Array<Int>>`) is not a regular language — pair TriRegex with a
   depth-tracking scanner for that (the same discipline this package's own
@@ -81,3 +88,7 @@ expanded automaton exceeds the budget.
 ## Licence & contact
 
 Apache-2.0 · TritHypha · hello@trithypha.dev
+
+The current `LICENSE` file is still marked with a pre-publication requirement
+to inline the full Apache-2.0 text. Registry publication remains BLOCKED until
+that packaging item is closed.
