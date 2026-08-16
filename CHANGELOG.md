@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.0 — 2026-08-16
+
+### Added
+
+- **`findAll(input, { spanUnit: "utf16" })`** — spans as UTF-16 offsets
+  (`String.slice` / native `RegExp.index` / myco units) instead of the default
+  code-point spans. The two agree on BMP text and differ only around astral
+  characters. One O(N) prefix pass; the ReDoS bound is unchanged (stated in
+  code-point steps regardless). `toUtf16Spans(cps, spans)` exported for reuse.
+- This closes the last named myco-backend feature gap: certified `findAll`,
+  `\b`/`\B`, case-insensitive, and now span-unit alignment are all in.
+
+### Assurance
+
+- Differential vs native `RegExp.index` (a UTF-16 offset) over an astral-mixed
+  corpus (emoji, `𝔸`, `🎯`): UTF-16 starts agree, and `String.slice(span)`
+  round-trips the matched text. The astral shift is exercised (red-capable: a
+  no-op conversion fails the KAT). Suite 76 → 81.
+
 ## 0.4.0 — 2026-08-16
 
 ### Added

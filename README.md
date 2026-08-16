@@ -61,6 +61,9 @@ import { caseShadow } from "triregex";
 caseShadow("Decimal", "decimal Decimal DECIMAL").shadow;
                                         // [[0,7],[16,23]] — the reverse-case matches a
                                         // case-SENSITIVE search misses. Warn on these.
+
+r.findAll("😀ab", { spanUnit: "utf16" }).spans; // [[2,4]] — UTF-16 offsets for
+                                        // String.slice / RegExp.index / myco (default: code points)
 ```
 
 ### `findAll` — certified, single pass

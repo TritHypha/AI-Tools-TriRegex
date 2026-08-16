@@ -6,12 +6,12 @@
 import { compileAst } from "./compile.ts";
 import { parsePattern } from "./parser.ts";
 import { TriMatcher } from "./engine.ts";
-import { findAll } from "./find-all.ts";
+import { findAll, toUtf16Spans } from "./find-all.ts";
 import type { FindAllOptions, FindAllResult } from "./find-all.ts";
 import type { Budget, CompileVeto, CostCertificate } from "./types.ts";
 import { DEFAULT_BUDGET } from "./types.ts";
 
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
 
 export {
   MATCH, INDETERMINATE, SECURITY_VETO, DEFAULT_BUDGET,
@@ -21,6 +21,7 @@ export type {
 } from "./types.ts";
 export type { TriStream } from "./engine.ts";
 export { TriMatcher } from "./engine.ts";
+export { toUtf16Spans } from "./find-all.ts";
 export type { FindAllOptions, FindAllResult } from "./find-all.ts";
 
 export interface CompileOptions {

@@ -79,8 +79,11 @@ surfaces, bound enforcement, test evidence, declared gaps.
   (~1.3% of adversarial cases); the single-start-per-slot artefact of the certified
   linear design (multi-start tracking would break the O(N) bound). Whole-word patterns
   are exact. Pinned by `tests/word-boundary.test.mjs` (KATs + two differential fuzzers).
-- Remaining before myco can switch backends: span-unit alignment (myco spans are
-  UTF-16 offsets; TriRegex spans are code points).
+- **Span-unit alignment DONE (v0.5):** `findAll(input, { spanUnit: "utf16" })`
+  reports UTF-16 offsets (myco / native `RegExp.index` units); default stays code
+  points. Verified vs native `.index` over an astral-mixed corpus. All named
+  myco-backend gaps are now closed — an actual backend swap is a myco-side
+  change (its call sites), not a TriRegex gap.
 
 ## Case-insensitive + caseShadow (v0.4)
 - `ignoreCase` folds ranges at compile time (A-Z ↔ a-z), BEFORE class negation so

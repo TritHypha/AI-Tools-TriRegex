@@ -46,10 +46,33 @@ const INF = 0x7fffffff;
 export interface FindAllOptions {
   /** Hard cap on matches returned; exceeding it is REPORTED via `truncated`. Default 10_000. */
   maxMatches?: number;
+  /**
+   * Unit for the returned spans. `"codepoint"` (default) counts Unicode code
+   * points — astral-safe and the engine's native unit. `"utf16"` reports
+   * JavaScript string offsets (UTF-16 code units), matching `String.slice`,
+   * native `RegExp.index`, and myco's offsets. The two agree on BMP text and
+   * differ only around astral characters. Conversion is a single O(N) pass; the
+   * ReDoS bound is unaffected (it is stated in code-point steps regardless).
+   */
+  spanUnit?: "codepoint" | "utf16";
+}
+
+/** Map code-point [start,end) spans to UTF-16 offsets using the code-point
+ *  array. A prefix sum of each code point's UTF-16 length (1 BMP, 2 astral). */
+export function toUtf16Spans(
+  cps: string[],
+  spans: ReadonlyArray<readonly [number, number]>,
+): Array<readonly [number, number]> {
+  // prefix[k] = UTF-16 offset of code-point index k (prefix[0] = 0).
+  const prefix = new Array<number>(cps.length + 1);
+  prefix[0] = 0;
+  for (let i = 0; i < cps.length; i++) prefix[i + 1] = prefix[i]! + cps[i]!.length;
+  return spans.map(([s, e]) => [prefix[s]!, prefix[e]!] as const);
 }
 
 export interface FindAllResult {
-  /** Non-overlapping [start, end) spans in code POINTS, input order. */
+  /** Non-overlapping [start, end) spans, input order. Unit follows `spanUnit`
+   *  (code points by default; UTF-16 offsets when requested). */
   spans: ReadonlyArray<readonly [number, number]>;
   /** True when maxMatches stopped the scan before end of input — never silent. */
   truncated: boolean;
@@ -306,5 +329,8 @@ export function findAll(
   // (★) each code point stepped once; each segment start pays one boundary
   // (the pruning pass or the initial closure), plus one for the end resolution.
   const stepsBound = N * certificate.perCharWorkBound + (segments + 1) * certificate.boundaryWorkBound;
-  return { spans, truncated, steps, stepsBound, segments, chars: pos };
+  // Spans are computed in code points; convert to UTF-16 offsets on request (the
+  // unit myco and native RegExp.index use). One O(N) prefix pass; bound unchanged.
+  const outSpans = opts.spanUnit === "utf16" ? toUtf16Spans(cps, spans) : spans;
+  return { spans: outSpans, truncated, steps, stepsBound, segments, chars: pos };
 }
