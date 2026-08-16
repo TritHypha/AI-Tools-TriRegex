@@ -89,6 +89,5 @@ automaton exceeds the budget.
 
 Apache-2.0 · TritHypha · hello@trithypha.dev
 
-The current `LICENSE` file is still marked with a pre-publication requirement
-to inline the full Apache-2.0 text. Registry publication remains BLOCKED until
-that packaging item is closed.
+`LICENSE` carries the full Apache-2.0 text (drift-gated by
+`tests/license.test.mjs`). Registry publication itself remains owner-gated.

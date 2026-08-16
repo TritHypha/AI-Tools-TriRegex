@@ -67,7 +67,10 @@ surfaces, bound enforcement, test evidence, declared gaps.
   numbers are claimed** (house rule: measured on a named machine or not at all).
 - `memoryBoundBytes` is a portable accounting estimate, not a JavaScript heap
   ceiling; runtime object overhead is engine-specific.
-- Publication is BLOCKED until `LICENSE` contains the full Apache-2.0 text.
+- ~~Publication is BLOCKED until `LICENSE` contains the full Apache-2.0 text.~~
+  Closed 2026-08-14: full text inlined (byte-copied from the house canonical, copyright
+  line re-attributed to TriRegex, pure ASCII) and drift-gated by `tests/license.test.mjs`.
+  Publication itself stays owner-gated.
 
 ## Distribution rule (owner directive, 2026-07-19)
 The Galerina main session must **not** consume this working copy. Galerina
