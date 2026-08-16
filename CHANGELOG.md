@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.0 — 2026-08-14
+
+### Added
+
+- `findAll(input, { maxMatches })` on every successful compile: all
+  non-overlapping leftmost-longest matches in ONE certified forward pass, with
+  a derived work bound `steps ≤ N·perCharWorkBound + (segments+1)·boundaryWorkBound`
+  that holds in both scan modes (asserted on the classic ReDoS killers). Empty
+  matches advance one code point; `^` matches at most once; `maxMatches`
+  fail-closes via `truncated: true`. Start positions differentially tested
+  against native `RegExp.matchAll` on a 400-case deterministic corpus.
+
+### Assurance
+
+- The first `findAll` design (`test()` per suffix) was measured and rejected
+  before commit: uncounted O(N) suffix copies per round, and under
+  `uniformScan` an O(N²) rescan that violated its own bound (N=2000:
+  2,013,003 steps vs 30,003). Recorded in the source header.
+- `LICENSE` now carries the full Apache-2.0 text, drift-gated by
+  `tests/license.test.mjs` (stub / lost APPENDIX / foreign copyright line /
+  non-ASCII byte all fail).
+- Suite 34 → 52 tests.
+
 ## 0.1.1 — 2026-07-28
 
 ### Security

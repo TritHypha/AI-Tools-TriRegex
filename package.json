@@ -1,6 +1,6 @@
 {
   "name": "triregex",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Ternary streaming pattern matching — ReDoS-immune by construction. Non-backtracking automaton, compile-time cost certificate, fail-closed SECURITY_VETO on uncertifiable patterns, three-valued streaming verdicts (+1 match / 0 indeterminate / -1 refuse) with fail-closed collapse at end-of-stream.",
   "type": "module",
   "exports": {

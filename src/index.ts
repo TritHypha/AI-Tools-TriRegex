@@ -6,10 +6,12 @@
 import { compileAst } from "./compile.ts";
 import { parsePattern } from "./parser.ts";
 import { TriMatcher } from "./engine.ts";
+import { findAll } from "./find-all.ts";
+import type { FindAllOptions, FindAllResult } from "./find-all.ts";
 import type { Budget, CompileVeto, CostCertificate } from "./types.ts";
 import { DEFAULT_BUDGET } from "./types.ts";
 
-export const VERSION = "0.1.1";
+export const VERSION = "0.2.0";
 
 export {
   MATCH, INDETERMINATE, SECURITY_VETO, DEFAULT_BUDGET,
@@ -19,6 +21,7 @@ export type {
 } from "./types.ts";
 export type { TriStream } from "./engine.ts";
 export { TriMatcher } from "./engine.ts";
+export type { FindAllOptions, FindAllResult } from "./find-all.ts";
 
 export interface CompileOptions {
   budget?: Partial<Budget>;
@@ -35,6 +38,8 @@ export interface CompileOk {
   ok: true;
   certificate: CostCertificate;
   matcher: TriMatcher;
+  /** Every non-overlapping leftmost-longest match, with its derived work bound. */
+  findAll: (input: string, opts?: FindAllOptions) => FindAllResult;
 }
 
 /**
@@ -75,9 +80,13 @@ export function compile(pattern: string, opts: CompileOptions = {}): CompileOk |
   if (!parsed.ok) return parsed;
   const compiled = compileAst(parsed.ast, budget, pattern.length);
   if ("ok" in compiled) return compiled;
+  const uniform = opts.uniformScan === true;
+  const matcher = new TriMatcher(compiled, uniform);
+  const certificate = compiled.certificate;
   return {
     ok: true,
-    certificate: compiled.certificate,
-    matcher: new TriMatcher(compiled, opts.uniformScan === true),
+    certificate,
+    matcher,
+    findAll: (input, o) => findAll(compiled, certificate, uniform, input, o),
   };
 }

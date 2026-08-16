@@ -54,9 +54,20 @@ surfaces, bound enforcement, test evidence, declared gaps.
 - `test()` is literally `stream(feed all) + end()` — whole-vs-chunked
   equivalence holds **by construction**, not by luck.
 
-## Declared gaps (v0.1 — honest, not hidden)
-- No capture groups; span is the first leftmost-longest match only.
-- No certified `findAll`; this blocks direct use as Myco's regex backend.
+## findAll (v0.2 — the myco-backend gap, closed for enumeration)
+- Single forward pass, resume-at-match-end, two-slot finality (held match +
+  next-segment candidate). Bound `steps ≤ N·perChar + (segments+1)·boundary`
+  asserted in BOTH scan modes on the classic killers over adversarial input.
+- The rejected first design (test() per suffix) is recorded in
+  `src/find-all.ts`'s header with the measured violation (N=2000 uniformScan:
+  2,013,003 steps vs a 30,003 bound) so nobody rebuilds it.
+- 400-case start-position differential vs native `RegExp.matchAll` on a
+  deterministic corpus; full-span differential where the two policies coincide.
+- Remaining before myco can switch backends: smart-case, `\b`, span-unit
+  alignment (myco spans are UTF-16 offsets; TriRegex spans are code points).
+
+## Declared gaps (honest, not hidden)
+- No capture groups; `test()` span is the first leftmost-longest match only.
 - `\b/\B` refused (v0.2 candidate: needs one code point of lookbehind state —
   compatible with the no-rewind design).
 - ASCII shorthand classes; no case-insensitive mode; no multiline `^$` mode.

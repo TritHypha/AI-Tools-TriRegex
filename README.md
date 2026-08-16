@@ -48,7 +48,31 @@ r.matcher.test("aaaa!").verdict;        // -1 — instantly, linearly
 const s = r.matcher.stream();           // no-rewind streaming
 s.feed("chunk1");                       // 0 (indeterminate) | 1 | -1
 s.end();                                // { verdict: 1 | -1, span? } — 0 has collapsed
+
+const all = r.findAll("aa aa aa!");     // every non-overlapping leftmost-longest match
+all.spans;                              // [[0,2],[3,5],[6,8]] in code points, one forward pass
+all.steps <= all.stepsBound;            // always true — the derived bound, in every mode
+all.truncated;                          // maxMatches reached before end-of-input (never silent)
 ```
+
+### `findAll` — certified, single pass
+
+`findAll` is not "run `test()` on each suffix": that design was measured and rejected
+(uncounted O(N) suffix copies per round, and under `uniformScan` every round rescanned
+its whole suffix — O(N²), the linear bound violated). It is one forward scan of the
+engine's own certified step that **resumes** at each match end, holding at most two
+candidates (the leftmost-longest match, and the best candidate that already clears its
+end — whose existence proves the first final). Bound, derived not asserted:
+
+```
+steps ≤ N · perCharWorkBound + (segments + 1) · boundaryWorkBound
+```
+
+Semantics: non-overlapping, leftmost-longest, input order; an empty match advances one
+code point (the `matchAll` / RE2 rule); `^`-anchored patterns match at most once, at
+true position 0; `maxMatches` fail-closes via `truncated: true`. Start positions are
+differentially tested against native `RegExp.matchAll` on a generated corpus (span *ends*
+differ by policy where alternation order matters — native is leftmost-first).
 
 ## Supported subset (v0.1)
 
@@ -67,8 +91,9 @@ automaton exceeds the budget.
 
 ## Honest bounds
 
-- **Spans** are leftmost-longest (earliest start; longest end at that start) —
-  first match only; no capture groups in v0.1.
+- **Spans** are leftmost-longest (earliest start; longest end at that start).
+  `test()` reports the first; `findAll` reports every non-overlapping one. No
+  capture groups yet.
 - **Shorthand classes** (`\d \w \s`) are ASCII-scoped in v0.1.
 - **`uniformScan`** disables the early exit only — it *reduces* data-dependent
   control flow; it is **not** a constant-time guarantee (JS/JIT gives none), and
