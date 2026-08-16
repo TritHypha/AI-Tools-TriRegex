@@ -79,7 +79,16 @@ surfaces, bound enforcement, test evidence, declared gaps.
   (~1.3% of adversarial cases); the single-start-per-slot artefact of the certified
   linear design (multi-start tracking would break the O(N) bound). Whole-word patterns
   are exact. Pinned by `tests/word-boundary.test.mjs` (KATs + two differential fuzzers).
-- Remaining before myco can switch backends: smart-case (`i`), span-unit alignment.
+- Remaining before myco can switch backends: span-unit alignment (myco spans are
+  UTF-16 offsets; TriRegex spans are code points).
+
+## Case-insensitive + caseShadow (v0.4)
+- `ignoreCase` folds ranges at compile time (A-Z ↔ a-z), BEFORE class negation so
+  `/[^a]/i` excludes both cases. No match-time cost, certificate unchanged.
+- `test()` EXACT vs native `/…/iu` (0 divergences / 10k). `findAll` 0 false
+  positives / 15k, exact ≥ 99.8%.
+- `caseShadow(pattern, input)` reports reverse-case matches a case-sensitive search
+  misses — the anti-silent-under-reporting warning (the myco case false-negative).
 
 ## Declared gaps (honest, not hidden)
 - No capture groups; `test()` span is the first leftmost-longest match only.

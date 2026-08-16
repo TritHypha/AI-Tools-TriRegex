@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.0 — 2026-08-16
+
+### Added
+
+- **Case-insensitive matching** (`compile(p, { ignoreCase: true })`), ASCII-scoped
+  (A-Z ↔ a-z), implemented as a compile-time range fold BEFORE class negation
+  (so `/[^a]/i` correctly excludes both `a` and `A`). Zero match-time cost; the
+  ReDoS certificate is unchanged (folding only widens ranges, adds no states).
+- **`caseShadow(pattern, input)`** — the anti-silent-under-reporting check for
+  case: reports the reverse-case matches a case-SENSITIVE search would miss, so a
+  caller can warn ("N reverse-case matches found") instead of silently
+  under-reporting — the exact failure that made a case-sensitive search look empty
+  when the content was there.
+
+### Assurance
+
+- Case-insensitive leftmost `test()`: EXACT vs native `/…/iu` — 0 divergences
+  over 10k+ fuzz cases. `findAll` never reports a non-match (0 false positives
+  over 15k cases), exact ≥ 99.8%.
+- Both `\b` and `i` `findAll` fuzzers now assert the true safety property: every
+  reported position is a genuine match start (native sticky-verified), and exact
+  ≥ 98%. The residual ≤0.2% is a non-overlapping-partition choice on adversarial
+  quantifier-adjacency inputs — a real match at a later start, never a false one.
+- Suite 64 → 76.
+
 ## 0.3.0 — 2026-08-16
 
 ### Added

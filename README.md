@@ -53,6 +53,14 @@ const all = r.findAll("aa aa aa!");     // every non-overlapping leftmost-longes
 all.spans;                              // [[0,2],[3,5],[6,8]] in code points, one forward pass
 all.steps <= all.stepsBound;            // always true — the derived bound, in every mode
 all.truncated;                          // maxMatches reached before end-of-input (never silent)
+
+const ci = compile("cat", { ignoreCase: true }); // ASCII case-insensitive (the `i` flag)
+ci.matcher.test("CAT").verdict;         // 1
+
+import { caseShadow } from "triregex";
+caseShadow("Decimal", "decimal Decimal DECIMAL").shadow;
+                                        // [[0,7],[16,23]] — the reverse-case matches a
+                                        // case-SENSITIVE search misses. Warn on these.
 ```
 
 ### `findAll` — certified, single pass

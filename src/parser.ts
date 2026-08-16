@@ -51,11 +51,35 @@ const veto = (code: CompileVeto["code"], reason: string, at?: number): CompileVe
   ok: false, verdict: -1, code, reason, at,
 });
 
+/** ASCII case-fold a set of ranges: every A-Z gains its a-z twin and vice
+ *  versa. Done on POSITIVE ranges BEFORE any class negation, because `/[^a]/i`
+ *  must exclude BOTH `a` and `A` — folding the complement would instead widen
+ *  it to match everything. ASCII-scoped, matching the engine's \w scope. */
+export function caseFoldAscii(ranges: Ranges): Ranges {
+  const out: Array<[number, number]> = [];
+  for (const [lo, hi] of ranges) {
+    out.push([lo, hi]);
+    const uLo = Math.max(lo, 0x41), uHi = Math.min(hi, 0x5a); // A-Z → add a-z
+    if (uLo <= uHi) out.push([uLo + 0x20, uHi + 0x20]);
+    const lLo = Math.max(lo, 0x61), lHi = Math.min(hi, 0x7a); // a-z → add A-Z
+    if (lLo <= lHi) out.push([lLo - 0x20, lHi - 0x20]);
+  }
+  return normalizeRanges(out);
+}
+
 class P {
   private i = 0;
   private readonly s: string;
   private readonly budget: Budget;
-  constructor(s: string, budget: Budget) { this.s = s; this.budget = budget; }
+  private readonly ignoreCase: boolean;
+  constructor(s: string, budget: Budget, ignoreCase: boolean) {
+    this.s = s; this.budget = budget; this.ignoreCase = ignoreCase;
+  }
+
+  /** Fold a positive range set when the `i` flag is on; identity otherwise. */
+  private fold(ranges: Ranges): Ranges {
+    return this.ignoreCase ? caseFoldAscii(ranges) : ranges;
+  }
 
   private atEnd(): boolean { return this.i >= this.s.length; }
   private peek(): number { return this.s.codePointAt(this.i) ?? -1; }
@@ -192,7 +216,7 @@ class P {
       case 0x2a: case 0x2b: case 0x3f:
         return veto("TPRX-PARSE", `quantifier '${String.fromCodePoint(cp)}' with nothing to repeat`, at);
       default:
-        return { ok: true, ast: { kind: "class", ranges: one(cp) } };
+        return { ok: true, ast: { kind: "class", ranges: this.fold(one(cp)) } };
     }
   }
 
@@ -260,7 +284,7 @@ class P {
     if (this.peek() === 0x42 /* B */) { this.next(); return { ok: true, ast: { kind: "nwb" } }; }
     const r = this.escapeRanges(at);
     if (!r.ok) return r;
-    return { ok: true, ast: { kind: "class", ranges: r.ranges } };
+    return { ok: true, ast: { kind: "class", ranges: this.fold(r.ranges) } };
   }
 
   /** [ … ] with ranges, negation, escapes. ']' must be escaped inside (strict). */
@@ -302,13 +326,14 @@ class P {
     }
     let ranges = normalizeRanges(acc);
     if (ranges.length === 0 && !negated) return veto("TPRX-PARSE", "empty character class", at);
+    ranges = this.fold(ranges);                 // fold the POSITIVE set, before negation
     if (negated) ranges = complementRanges(ranges);
     return { ok: true, ast: { kind: "class", ranges } };
   }
 }
 
-export function parsePattern(pattern: string, budget: Budget): Res {
+export function parsePattern(pattern: string, budget: Budget, ignoreCase = false): Res {
   if (pattern.length > budget.maxPatternLength)
     return veto("TPRX-BUDGET", `pattern length ${pattern.length} exceeds budget.maxPatternLength (${budget.maxPatternLength})`);
-  return new P(pattern, budget).parse();
+  return new P(pattern, budget, ignoreCase).parse();
 }
