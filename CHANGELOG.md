@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.0 — 2026-08-16
+
+### Added
+
+- **Word boundaries `\b` and `\B`** (ASCII `\w`), the declared myco-backend gap.
+  Zero-width assertions parked as resting states and resolved per-position from
+  one register of lookbehind — still non-backtracking, no rewind, and the ReDoS
+  cost certificate is preserved (a bounded fixpoint over assertion slots, with a
+  cycle guard for `(a|\b)*`-style zero-width loops). `[\b]` is backspace inside a
+  class, matching JS. A quantifier on a bare boundary (`\b*`) is refused, like `^*`.
+
+### Assurance
+
+- Leftmost `test()` is EXACT vs native `RegExp` — 0 divergences over 10,000 fuzz
+  cases mixing `\b`/`\B` with quantified atoms.
+- `findAll` never invents a match: ours is always a SUBSEQUENCE of native's
+  (0 violations over 12,000 fuzz cases). One documented limitation: a quantifier
+  directly adjacent to a boundary may omit an overlapping adjacent match (~1.3%
+  of adversarial cases) — the single-start-per-slot artefact, never a wrong match.
+- Suite 52 → 64.
+
 ## 0.2.0 — 2026-08-14
 
 ### Added

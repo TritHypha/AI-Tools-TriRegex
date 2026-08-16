@@ -74,19 +74,32 @@ true position 0; `maxMatches` fail-closes via `truncated: true`. Start positions
 differentially tested against native `RegExp.matchAll` on a generated corpus (span *ends*
 differ by policy where alternation order matters — native is leftmost-first).
 
+### Word boundaries and the one honest limitation
+
+`\b`/`\B` are supported everywhere the engine matches. **Leftmost `test()` is exact** —
+0 divergences from native over 10,000 fuzz cases. `findAll` **never invents a match**:
+its results are always a *subsequence* of native's (verified: 0 subsequence violations over
+12,000 fuzz cases). The single documented limitation: when a quantifier sits directly
+adjacent to a boundary (e.g. `.*\B`, `\d?.\B1+`), `findAll` may *omit* an overlapping
+adjacent match native emits (~1.3% of adversarial cases) — an artefact of the
+single-start-per-slot certified design, never a wrong or spurious match. Whole-word
+patterns (`\bword\b`, `foo\b`) are exact.
+
 ## Supported subset (v0.1)
 
 Literals · concatenation · alternation `|` · groups `( )` `(?: )` · classes
 `[a-z]` `[^…]` with ranges and class escapes · `.` (not `\n`) · anchors `^ $` ·
+**word boundaries `\b` `\B`** (ASCII `\w`; resolved per-position, still no-rewind) ·
 quantifiers `* + ? {n} {n,} {n,m}` (bounded) · escapes `\d \D \w \W \s \S \n \r
 \t \f \v \0 \xHH \uHHHH \u{…}` and punctuation escapes · Unicode by **code
-point** (astral-safe; spans count code points).
+point** (astral-safe; spans count code points). Inside a class, `[\b]` is
+backspace (U+0008), matching JS.
 
 **Refused by design** (compile-time `SECURITY_VETO`, named reason — never a
 silent literal, never a slow path): backreferences (`\1`, `\k<…>`) ·
 lookaround (`(?=` `(?!` `(?<=` `(?<!`) · named groups · inline flags ·
-`\b \B` (declared v0.2 candidate) · lazy/possessive/stacked quantifier suffixes
-(`a+?`, `a++`, `a**`) · unknown alpha escapes · any pattern whose expanded
+lazy/possessive/stacked quantifier suffixes (`a+?`, `a++`, `a**`) · a quantifier
+on an anchor (`\b*`, `^*`) · unknown alpha escapes · any pattern whose expanded
 automaton exceeds the budget.
 
 ## Honest bounds

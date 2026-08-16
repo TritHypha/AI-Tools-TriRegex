@@ -45,6 +45,8 @@ export interface CostCertificate {
   boundaryWorkBound: number;
   /** Maximum binary-search comparisons for one character-class membership test. */
   maxRangeComparisons: number;
+  /** Zero-width assertion resting states (\b, \B) — 0 when the pattern has none. */
+  assertionStates: number;
   /**
    * Portable accounting estimate for closure rows and state arrays. JavaScript
    * object overhead is runtime-specific, so this is not a process-heap ceiling.
@@ -81,6 +83,8 @@ export type AstNode =
   | { kind: "rep"; item: AstNode; min: number; max: number } // max: Infinity allowed
   | { kind: "bol" }
   | { kind: "eol" }
+  | { kind: "wb" }                                    // \b — word boundary (zero-width)
+  | { kind: "nwb" }                                   // \B — non-word boundary (zero-width)
   | { kind: "empty" };
 
 // ── NFA program ──────────────────────────────────────────────────────────────
@@ -90,6 +94,8 @@ export type Instr =
   | { op: "jmp"; x: number }
   | { op: "bol" }
   | { op: "eol" }
+  | { op: "wb" }                                      // \b resting assertion
+  | { op: "nwb" }                                     // \B resting assertion
   | { op: "match" };
 
 export interface EngineStats {

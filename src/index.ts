@@ -11,7 +11,7 @@ import type { FindAllOptions, FindAllResult } from "./find-all.ts";
 import type { Budget, CompileVeto, CostCertificate } from "./types.ts";
 import { DEFAULT_BUDGET } from "./types.ts";
 
-export const VERSION = "0.2.0";
+export const VERSION = "0.3.0";
 
 export {
   MATCH, INDETERMINATE, SECURITY_VETO, DEFAULT_BUDGET,

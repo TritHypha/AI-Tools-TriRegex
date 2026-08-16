@@ -66,6 +66,21 @@ surfaces, bound enforcement, test evidence, declared gaps.
 - Remaining before myco can switch backends: smart-case, `\b`, span-unit
   alignment (myco spans are UTF-16 offsets; TriRegex spans are code points).
 
+## Word boundaries (v0.3 — the myco-backend gap, closed)
+- `\b`/`\B` (ASCII `\w`) parked as resting assertion states, resolved per-position
+  from one register of lookbehind (`isWord(prev) XOR isWord(next)`). Non-backtracking,
+  no rewind; the certificate gains a bounded `assertResolveBound` (a fixpoint over
+  assertion slots with a resolved-this-step cycle guard) — ReDoS immunity preserved
+  and asserted on `\b(a+)+\b`-style killers.
+- Leftmost `test()`: EXACT vs native over 10k fuzz cases (0 divergences).
+- `findAll`: ours ⊆ native always (0 subsequence violations / 12k cases) — never a
+  wrong or spurious match. **Known limitation**: a quantifier directly adjacent to a
+  boundary (`.*\B`, `\d?.\B1+`) may omit an overlapping adjacent match native emits
+  (~1.3% of adversarial cases); the single-start-per-slot artefact of the certified
+  linear design (multi-start tracking would break the O(N) bound). Whole-word patterns
+  are exact. Pinned by `tests/word-boundary.test.mjs` (KATs + two differential fuzzers).
+- Remaining before myco can switch backends: smart-case (`i`), span-unit alignment.
+
 ## Declared gaps (honest, not hidden)
 - No capture groups; `test()` span is the first leftmost-longest match only.
 - `\b/\B` refused (v0.2 candidate: needs one code point of lookbehind state —

@@ -3,9 +3,10 @@
 // Anything outside the certified-linear subset is a compile-time SECURITY_VETO
 // with a named reason — never a silent literal, never a slow run:
 //   * backreferences (\1..\9, \k<…>)      — non-regular; forces backtracking
-//   * lookaround ((?=  (?!  (?<=  (?<!)   — v0.1 out of scope, refused
-//   * word boundaries (\b \B)             — v0.2 candidate, refused for now
+//   * lookaround ((?=  (?!  (?<=  (?<!)   — out of scope, refused
 //   * named groups / inline flags         — refused (no silent semantics)
+// Supported zero-width assertions: ^ $ (position) and \b \B (word boundary,
+// ASCII \w — resolved per-position in the engine, still no-rewind).
 //   * unknown escapes                     — refused (fail-closed, no guessing)
 // Non-backtracking discipline in the parser itself: single forward pass,
 // no regexes, code-point aware (astral-safe via codePointAt).
@@ -115,7 +116,7 @@ class P {
       min = r.min; max = r.max;
     }
     if (min !== -1) {
-      if (node.kind === "bol" || node.kind === "eol")
+      if (node.kind === "bol" || node.kind === "eol" || node.kind === "wb" || node.kind === "nwb")
         return veto("TPRX-PARSE", "quantifier on an anchor", at);
       node = { kind: "rep", item: node, min, max };
       const next = this.peek();
@@ -233,8 +234,11 @@ class P {
         this.i += 4;
         return { ok: true, ranges: one(parseInt(h, 16)) };
       }
-      case "b": case "B":
-        return veto("TPRX-UNSUPPORTED", `\\${c} word boundary is refused in v0.1 (declared v0.2 candidate)`, at);
+      // Class context only (atom-context \b/\B are handled in escape() as
+      // assertions and never reach here): \b = backspace U+0008, as in JS
+      // /[\b]/. \B has no class meaning — fail-closed rather than guess.
+      case "b": return { ok: true, ranges: one(0x08) };
+      case "B": return veto("TPRX-UNSUPPORTED", "\\B has no meaning inside a character class", at);
       case "k":
         return veto("TPRX-UNSUPPORTED", "\\k<…> backreference is refused by design (non-regular)", at);
       default: {
@@ -249,6 +253,11 @@ class P {
   }
 
   private escape(at: number): Res {
+    // Atom context: \b / \B are ZERO-WIDTH ASSERTIONS (word / non-word boundary).
+    // (Inside a character class the same bytes mean backspace — see escapeRanges;
+    // JS does the same: /\b/ is a boundary, /[\b]/ is U+0008.)
+    if (this.peek() === 0x62 /* b */) { this.next(); return { ok: true, ast: { kind: "wb" } }; }
+    if (this.peek() === 0x42 /* B */) { this.next(); return { ok: true, ast: { kind: "nwb" } }; }
     const r = this.escapeRanges(at);
     if (!r.ok) return r;
     return { ok: true, ast: { kind: "class", ranges: r.ranges } };

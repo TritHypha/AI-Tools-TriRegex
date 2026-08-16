@@ -11,7 +11,7 @@
 // Contact hello@trithypha.dev · Apache-2.0.
 // =============================================================================
 import type { Compiled } from "./compile.ts";
-import { inRangesWithCost } from "./compile.ts";
+import { inRangesWithCost, isWordCodePoint, resolveAssertions } from "./compile.ts";
 import type { EngineStats, MatchOutcome, TriVerdict } from "./types.ts";
 
 const INF = 0x7fffffff;
@@ -53,6 +53,10 @@ export class TriMatcher {
     let matchEnd = -1;
     let curMinStart = INF;
     let impossible = false;
+    // isWord of the last consumed code point (false before position 0) — one
+    // register of lookbehind, all a word boundary needs and no rewind.
+    let prevWord = false;
+    const resolved = new Uint8Array(c.slots); // scratch for assertion resolution
     const stats: EngineStats = { chars: 0, steps: 0, maxActive: 0 };
     let ended: MatchOutcome | undefined;
 
@@ -74,9 +78,10 @@ export class TriMatcher {
     };
 
     const feedChar = (cp: number): void => {
+      const wordNext = isWordCodePoint(cp);
       // early exit: a held match is FINAL once no active thread can beat it
       // (all remaining starts are later; fresh starts would be later still)
-      if (matched && !this.uniformScan && curMinStart > matchStart) { pos++; stats.chars++; return; }
+      if (matched && !this.uniformScan && curMinStart > matchStart) { pos++; stats.chars++; prevWord = wordNext; return; }
       // fresh unanchored start for a match beginning AT this position (pos>0;
       // position 0 is covered by the initStart closure). Once matched, a fresh
       // start is strictly later than matchStart and can never win — skip.
@@ -92,6 +97,9 @@ export class TriMatcher {
         }
         if (im.matched) latch(pos, pos); // pattern matches empty at this position
       }
+      // Resolve \b/\B at THIS position (between prev and next=cp), before
+      // consuming: assertion threads pass or die on the boundary truth.
+      stats.steps += resolveAssertions(c, cur, curStart, prevWord !== wordNext, pos, resolved, latch);
       nxt.fill(0);
       nxtStart.fill(INF);
       let active = 0;
@@ -122,6 +130,7 @@ export class TriMatcher {
       const t1 = cur; cur = nxt; nxt = t1;
       const t2 = curStart; curStart = nxtStart; nxtStart = t2;
       curMinStart = minNext;
+      prevWord = wordNext; // this consumed cp becomes the next boundary's LEFT side
       pos++;
       stats.chars++;
       if (!matched && c.anchoredStart && cur.every((w) => w === 0)) impossible = true;
@@ -137,6 +146,22 @@ export class TriMatcher {
       },
       end: (): MatchOutcome => {
         if (ended !== undefined) return ended;
+        // Resolve parked \b/\B at the true end (next = none = non-word) — a
+        // trailing boundary like `foo\b`, or a fresh `\b`/`\B` at end. A fresh
+        // unanchored start is seeded first so a boundary that BEGINS a match at
+        // end (e.g. `\B` on "") can fire.
+        if (c.hasAssertions) {
+          if (!matched && (pos === 0 || !c.anchoredStart)) {
+            const im = c.initMid;
+            for (let w = 0; w < words; w++) { cur[w] = (cur[w]! | im.bits[w]!) >>> 0; stats.steps++; }
+            for (let s = 0; s < c.slots; s++) {
+              stats.steps++;
+              if ((im.bits[s >> 5]! >>> (s & 31)) & 1 && curStart[s]! > pos) curStart[s] = pos;
+            }
+            if (im.matched) latch(pos, pos);
+          }
+          stats.steps += resolveAssertions(c, cur, curStart, prevWord !== false, pos, resolved, latch);
+        }
         // resolve parked end-of-line assertions at the true boundary
         for (let s = 0; s < c.slots; s++) {
           stats.steps++;

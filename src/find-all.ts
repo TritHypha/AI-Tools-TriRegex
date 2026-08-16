@@ -38,7 +38,7 @@
 // Contact hello@trithypha.dev · Apache-2.0.
 // =============================================================================
 import type { Compiled } from "./compile.ts";
-import { inRangesWithCost } from "./compile.ts";
+import { inRangesWithCost, isWordCodePoint, resolveAssertions } from "./compile.ts";
 import type { CostCertificate } from "./types.ts";
 
 const INF = 0x7fffffff;
@@ -85,6 +85,11 @@ export function findAll(
   let steps = 0;
   let segments = 0;
   let truncated = false;
+  // Word-boundary state: isWord of the last consumed cp (false before pos 0),
+  // and a scratch array for the resolver. Both inert when the pattern has no
+  // \b/\B (resolveAssertions returns 0 and the merge below is gated off).
+  let prevWord = false;
+  const resolved = new Uint8Array(c.slots);
 
   // The HELD match: leftmost-longest so far, not yet emitted. `matched` means
   // "a match is held". A second slot, NEXT, holds the best candidate that
@@ -184,6 +189,15 @@ export function findAll(
       if (!emitAndResume()) { stopped = true; break; }
     }
     if (stopped) break;
+    // Prune threads that started BELOW the floor (they overlap an already-emitted
+    // match) BEFORE the fresh start seeds this position. Without this, an
+    // overlapping thread can squat a single-start assertion slot and block the
+    // valid later-starting match that needs it (e.g. `.?\b\d.?` — a `.?` that
+    // consumed into the previous match reaches \b with a below-floor start and
+    // starves the fresh start of its slot). Gated to assertion patterns: char
+    // slots are handled by the two-slot NEXT machinery; only zero-width
+    // assertion slots have the single-start collision.
+    if (c.hasAssertions && floor > 0) pruneBelowFloor();
     const cp = cps[pos]!.codePointAt(0)!;
     // Fresh unanchored start at EVERY position (pos>0). The single-match engine
     // gates this on `!matched` as an optimisation (a later start can never win
@@ -201,6 +215,9 @@ export function findAll(
       }
       if (im.matched) latch(pos, pos);
     }
+    // Resolve \b/\B at this position (boundary between prev and next=cp) before
+    // consuming — assertion threads pass or die on the boundary truth.
+    steps += resolveAssertions(c, cur, curStart, prevWord !== isWordCodePoint(cp), pos, resolved, latch);
     nxt.fill(0); nxtStart.fill(INF);
     let minNext = INF;
     for (let s = 0; s < c.slots; s++) {
@@ -212,18 +229,24 @@ export function findAll(
       steps += rr.comparisons;
       if (!rr.matched) continue;
       const row = c.rows[s]!;
-      for (let w = 0; w < words; w++) { nxt[w] = (nxt[w]! | row[w]!) >>> 0; steps++; }
+      let rowLives = false;
+      for (let w = 0; w < words; w++) { const rw = row[w]!; if (rw) rowLives = true; nxt[w] = (nxt[w]! | rw) >>> 0; steps++; }
       const st = curStart[s]!;
       for (let t = 0; t < c.slots; t++) {
         steps++;
         if ((row[t >> 5]! >>> (t & 31)) & 1 && nxtStart[t]! > st) nxtStart[t] = st;
       }
-      if (st < minNext) minNext = st;
+      // Only a SURVIVING thread (its row has a resting successor) holds finality.
+      // A thread that consumed straight into MATCH is done and must not keep
+      // curMinStart low, or a completed match lingers unemitted and its floor
+      // never advances to prune overlapping threads (the `.?\b\d.?` miss).
+      if (rowLives && st < minNext) minNext = st;
       if (c.matchOnConsume[s]) latch(st, pos + 1);
     }
     let t1 = cur; cur = nxt; nxt = t1;
     let t2 = curStart; curStart = nxtStart; nxtStart = t2;
     curMinStart = minNext;
+    prevWord = isWordCodePoint(cp);
     pos++;
     // uniformScan has no bearing on findAll's correctness or bound: the flag
     // only ever controlled whether the single-match engine STOPPED early, and a
@@ -234,19 +257,22 @@ export function findAll(
   if (stopped) {
     truncated = spans.length >= maxMatches && pos < N;
   } else {
-    // end of input: resolve parked eol assertions, then a fresh empty match at end
+    const endWb = prevWord !== false; // boundary between last cp and none(non-word)
+    // ── Phase 1: matches COMPLETING at end ──────────────────────────────────
+    // A trailing \b/\B on a consumed run (foo\b) or a parked eol ($), resolved
+    // on the LIVE state — these end at pos and may be non-empty.
+    if (c.hasAssertions) steps += resolveAssertions(c, cur, curStart, endWb, pos, resolved, latch);
     for (let s = 0; s < c.slots; s++) {
       steps++;
       if (!((cur[s >> 5]! >>> (s & 31)) & 1)) continue;
       const instr = c.prog[c.slotToInstr[s]!]!;
       if (instr.op === "eol" && c.eolResolves[s]) latch(curStart[s]!, pos);
     }
-    // A fresh EMPTY match at the very end (`$`, `a*` tails). It is a candidate
-    // like any other — the latch decides whether it is held, queued as NEXT
-    // (after a held match that ends before pos), or void.
-    if ((pos === 0 || !c.anchoredStart) && c.endFreshMatches[pos === 0 ? 1 : 0]) latch(pos, pos);
-    // At the true end everything held is final: drain held, then NEXT (a match
-    // clear of the held end that was observed early). Nothing can follow.
+    // If a fresh empty match at pos 0 is the ONLY match (empty input, e.g. `a*`
+    // or `\B` on ""), the top-of-function initStart already seeded it; latch here
+    // when it completes at pos 0.
+    if (pos === 0 && !matched && c.endFreshMatches[1]) latch(0, 0);
+    // Drain everything held/queued that completes at or before end.
     while (matched) {
       if (spans.length >= maxMatches) { truncated = true; break; }
       spans.push([matchStart, matchEnd]);
@@ -258,13 +284,22 @@ export function findAll(
         matched = true; matchStart = nextStart; matchEnd = nextEnd;
       } else { matched = false; }
       hasNext = false; nextStart = INF; nextEnd = -1;
-      // After the drained match, a fresh EMPTY match AT the end may still be
-      // legal: it must sit at or after the floor and must not be empty-at-p for
-      // the p just emitted as empty (the "advance one" rule — an empty match at
-      // pos-1 leaves pos itself free, an empty match AT pos does not repeat).
-      if (!matched && !c.anchoredStart && c.endFreshMatches[0] && pos >= floor && pos !== noEmptyAt) {
-        matched = true; matchStart = pos; matchEnd = pos;
+    }
+    // ── Phase 2: a fresh ZERO-WIDTH match AT end (pos>0): `$`/`a*` tails AND
+    // \b/\B. A new segment would begin here; a CLEAN state is used so the match
+    // is NOT absorbed into a thread that already carried an earlier start (the
+    // `.*\B` / `a*`-over-"baab" trailing-empty native emits after the last match).
+    if (pos > 0 && spans.length < maxMatches && !c.anchoredStart
+        && pos >= floor && pos !== noEmptyAt) {
+      cur.fill(0); curStart.fill(INF);
+      for (let w = 0; w < words; w++) cur[w] = c.initMid.bits[w]!;
+      for (let s = 0; s < c.slots; s++) { steps++; if ((cur[s >> 5]! >>> (s & 31)) & 1) curStart[s] = pos; }
+      let zero = c.initMid.matched || c.endFreshMatches[0];
+      if (c.hasAssertions) {
+        const zlatch = (st: number, en: number): void => { if (st === pos && en === pos) zero = true; };
+        steps += resolveAssertions(c, cur, curStart, endWb, pos, resolved, zlatch);
       }
+      if (zero) { spans.push([pos, pos]); segments++; }
     }
   }
 

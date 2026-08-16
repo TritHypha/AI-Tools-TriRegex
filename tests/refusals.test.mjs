@@ -26,9 +26,13 @@ test("lookaround is refused by design", () => {
   veto("(?<name>a)", "TPRX-UNSUPPORTED");
 });
 
-test("word boundaries are refused in v0.1 (declared)", () => {
-  veto("\\bword\\b", "TPRX-UNSUPPORTED");
-  veto("a\\B", "TPRX-UNSUPPORTED");
+test("word boundaries are now SUPPORTED (v0.2) — compile, do not refuse", () => {
+  assert.equal(compile("\\bword\\b").ok, true, "\\bword\\b compiles");
+  assert.equal(compile("a\\B").ok, true, "\\B compiles");
+  // but a quantifier on a boundary is still a parse refusal (nothing to repeat)
+  veto("\\b+", "TPRX-PARSE");
+  // and \B inside a class has no meaning — fail-closed
+  veto("[\\B]", "TPRX-UNSUPPORTED");
 });
 
 test("unknown alpha escapes are refused — no silent literal", () => {
