@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,4 +62,50 @@ test("public release documentation keeps the required release contract", () => {
       `${relativePath} contains a drive-rooted Windows path`,
     );
   }
+});
+
+test("package metadata exposes the canonical npm entry points", () => {
+  const pkg = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
+
+  assert.equal(pkg.name, "triregex");
+  assert.equal(pkg.version, "0.5.0");
+  assert.equal(pkg.type, "module");
+  assert.equal(pkg.main, "./dist/index.js");
+  assert.equal(pkg.types, "./dist/index.d.ts");
+  assert.deepEqual(pkg.repository, {
+    type: "git",
+    url: "git+https://github.com/TritHypha/AI-Tools-TriRegex.git",
+  });
+  assert.equal(pkg.homepage, "https://github.com/TritHypha/AI-Tools-TriRegex#readme");
+  assert.equal(pkg.bugs.url, "https://github.com/TritHypha/AI-Tools-TriRegex/issues");
+  assert.deepEqual(pkg.exports["."], {
+    types: "./dist/index.d.ts",
+    import: "./dist/index.js",
+    default: "./dist/index.js",
+  });
+  assert.equal(Object.keys(pkg.dependencies ?? {}).length, 0);
+});
+
+test("release tree excludes generated myco indexes", () => {
+  const trackedPaths = execFileSync("git", ["ls-files", "-z"], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024,
+    timeout: 5000,
+  })
+    .split("\0")
+    .filter(Boolean);
+
+  assert.ok(
+    trackedPaths.every((relativePath) => !relativePath.includes("/.myco/") && !relativePath.startsWith(".myco/")),
+    "generated .myco index is tracked",
+  );
+  assert.match(readFileSync(join(repositoryRoot, ".gitignore"), "utf8"), /^\.myco\/$/m);
+});
+
+test("license names the canonical repository", () => {
+  const license = readFileSync(join(repositoryRoot, "LICENSE"), "utf8");
+
+  assert.match(license, /github\.com\/TritHypha\/AI-Tools-TriRegex/);
+  assert.doesNotMatch(license, /github\.com\/TritHypha\/TriRegex/);
 });
