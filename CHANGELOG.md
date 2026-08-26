@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Release readiness
+
+- Define the public README, security reporting, contribution, release, and
+  audit documentation contract for the 0.5.0 release line.
+- Add a machine-checked public-document verification test and retain local
+  release-gate guidance.
+- No matcher behavior change is included in this section.
+
 ## 0.5.0 — 2026-08-16
 
 ### Added
