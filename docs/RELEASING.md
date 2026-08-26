@@ -7,10 +7,15 @@ claim that any publication has occurred.
 
 1. Start from a clean working tree and confirm the intended branch and commit.
 2. Install the locked dependencies with `npm ci`.
-3. Run `npm test`, including the release-document contract.
+3. Run `npm run check:release`. This is the required local pre-publication
+   command; it builds and tests the repository, validates the packed payload,
+   and verifies JavaScript and TypeScript consumers against the exact tarball.
 4. Review the version in `package.json`, the exported `VERSION`, and the
    applicable `CHANGELOG.md` entry together.
 5. Confirm that release notes describe only the changes actually included.
+
+A `PASS` from `npm run check:release` authorizes neither publishing nor tagging.
+Those actions remain owner-controlled.
 
 ## Owner-controlled publication
 
