@@ -58,7 +58,7 @@ if (!compiled.ok) {
 }
 
 const outcome = compiled.matcher.test("a cattt naps");
-console.log(outcome.verdict, outcome.span); // 1, [2, 6]
+console.log(outcome.verdict, outcome.span); // 1, [2, 7]
 console.log(compiled.certificate.perCharWorkBound);
 ```
 
@@ -118,8 +118,9 @@ must not silently fall back to native `RegExp` after a refusal.
 
 ## Supported subset
 
-The v0.5.0 subset includes literals; concatenation; alternation; capturing and
-non-capturing groups; character classes and ranges; `.` (except newline);
+The v0.5.0 subset includes literals; concatenation; alternation; parenthesized
+grouping forms `(…)` and `(?:…)` (capture values are not reported); character
+classes and ranges; `.` (except newline);
 anchors; ASCII word boundaries; greedy quantifiers; and the documented escape
 forms. Unicode input is processed by code point. `ignoreCase: true` folds ASCII
 letter ranges at compile time; shorthand classes and word boundaries remain

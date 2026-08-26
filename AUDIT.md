@@ -51,9 +51,11 @@ from the limits a consumer must keep in view.
   early exit but does not make JavaScript or its JIT data-oblivious.
 - TriRegex is a documented regular-expression subset, not a complete JavaScript
   `RegExp` replacement and not a parser for nested syntax.
-- Capture groups, lookaround, backreferences, named groups, inline flags, and
-  other unsupported syntax are refused. A caller must choose its own explicit
-  policy for that refusal; it must not silently fall back to native `RegExp`.
+- Parenthesized `(…)` and `(?:…)` forms provide grouping only; capture values
+  are not reported by the public match outcome. Lookaround, backreferences,
+  named groups, inline flags, and other unsupported syntax are refused. A
+  caller must choose its own explicit policy for that refusal; it must not
+  silently fall back to native `RegExp`.
 - The memory figure in a certificate is an accounting bound, not a JavaScript
   heap ceiling.
 - Publication, tags, registry access, and GitHub release actions remain
