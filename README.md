@@ -147,5 +147,7 @@ Apache-2.0. See [LICENSE](LICENSE).
 ## Release status
 
 Publication is owner-controlled. The release process and local checks are
-described in [docs/RELEASING.md](docs/RELEASING.md); this document does not
-represent a publication announcement.
+described in [docs/RELEASING.md](docs/RELEASING.md). Read-only CI runs the test
+and release checks across the supported Node.js versions as corroborating
+evidence; neither CI success nor this document represents publication
+authority or a publication announcement.

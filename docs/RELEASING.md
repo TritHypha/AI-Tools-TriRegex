@@ -17,6 +17,13 @@ claim that any publication has occurred.
 A `PASS` from `npm run check:release` authorizes neither publishing nor tagging.
 Those actions remain owner-controlled.
 
+## Continuous integration
+
+Read-only CI runs `npm test` and `npm run check:release` on Node.js 18, 20, and
+22 for pushes and pull requests. A successful hosted run corroborates the local
+gate for that revision; it does not authorize publication, tagging, or a
+GitHub release.
+
 ## Owner-controlled publication
 
 Creating a tag, publishing to npm, and creating a GitHub release are
