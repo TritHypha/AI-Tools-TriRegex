@@ -102,7 +102,7 @@ function isSecretPath(path) {
 }
 
 function validatePublicArtifact(path) {
-  if (/(^|\/)(?:__tests__|test|tests)(?:\/|$)/i.test(path) || /(?:^|[._-])(?:test|spec)(?=[._-]|$)/i.test(posix.basename(path))) {
+  if (/(^|\/)(?:__(?:tests|specs)__|tests?|specs?)(?:\/|$)/i.test(path) || /(?:^|[._-])(?:test|spec)(?=[._-]|$)/i.test(posix.basename(path))) {
     throw new Error(`test artifact is not public package content: ${path}`);
   }
   if (
@@ -190,8 +190,7 @@ export function scanPublicBytes(filesByPath) {
     if (
       /(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/m.test(text) ||
       /(?:^|[\s"'(=])\\\\[^\\/\r\n]+[\\/][^\\/\r\n]+/m.test(text) ||
-      /(?:^|[\s"'(=])\/\/[^/\s]+\/[^/\s]+/m.test(text) ||
-      /(?:^|[\s"'(=])\/(?:Users|home|tmp|private|var|etc|opt|usr|root|mnt|Volumes)(?:\/|$)/m.test(text)
+      /(?:^|[\s"'])\/(?!\/)[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~:@%+,-]+)+(?=$|[\s"')\],;])/m.test(text)
     ) {
       throw new Error(`absolute local path refused in public bytes: ${path}`);
     }
@@ -349,6 +348,7 @@ function readTarballFiles(tarballBytes) {
   }
 
   const files = new Map();
+  const directories = new Set();
   let directoryCount = 0;
   let totalSize = 0;
   let offset = 0;
@@ -363,7 +363,7 @@ function readTarballFiles(tarballBytes) {
         if (!archive.subarray(offset).every((byte) => byte === 0)) {
           throw new ReleaseCheckError("PACK_ARCHIVE_INVALID");
         }
-        return files;
+        return { files, directories };
       }
       continue;
     }
@@ -384,8 +384,23 @@ function readTarballFiles(tarballBytes) {
       if (size !== 0 || directoryCount > MAX_DIRECTORY_COUNT) {
         throw new ReleaseCheckError("PACK_ARCHIVE_INVALID");
       }
+      if (relativePath.length !== 0) {
+        let path;
+        try {
+          path = canonicalPackPath(relativePath);
+        } catch {
+          throw new ReleaseCheckError("PACK_ARCHIVE_INVALID");
+        }
+        if (directories.has(path)) throw new ReleaseCheckError("PACK_ARCHIVE_INVALID");
+        directories.add(path);
+      }
     } else if (type === 0 || type === 48) {
-      const path = canonicalPackPath(relativePath);
+      let path;
+      try {
+        path = canonicalPackPath(relativePath);
+      } catch {
+        throw new ReleaseCheckError("PACK_ARCHIVE_INVALID");
+      }
       if (files.has(path) || files.size >= MAX_FILE_COUNT || size > MAX_FILE_BYTES) {
         throw new ReleaseCheckError("PACK_ARCHIVE_INVALID");
       }
@@ -412,9 +427,24 @@ function requireExactFileSet(actualPaths, expectedPaths, errorCode) {
   }
 }
 
-function validateArchiveIdentity(receipt, archiveFiles, expectedPackage) {
+function validateArchiveIdentity(receipt, archive, expectedPackage) {
+  const { files: archiveFiles, directories: archiveDirectories } = archive;
   const receiptSizes = new Map(receipt.files.map((file) => [file.path, file.size]));
   requireExactFileSet(archiveFiles.keys(), receiptSizes.keys(), "PACK_ARCHIVE_FILE_SET_MISMATCH");
+  const impliedDirectories = new Set();
+  for (const path of archiveFiles.keys()) {
+    const segments = path.split("/");
+    segments.pop();
+    while (segments.length > 0) {
+      impliedDirectories.add(segments.join("/"));
+      segments.pop();
+    }
+  }
+  for (const path of archiveDirectories) {
+    if (!impliedDirectories.has(path)) {
+      throw new ReleaseCheckError("PACK_ARCHIVE_DIRECTORY_SET_MISMATCH");
+    }
+  }
   for (const [path, bytes] of archiveFiles) {
     if (receiptSizes.get(path) !== bytes.byteLength) {
       throw new ReleaseCheckError("PACK_ARCHIVE_SIZE_MISMATCH");
@@ -572,8 +602,8 @@ export async function runReleaseChecks({ repoRoot = DEFAULT_REPO_ROOT, requireCl
     const tarballBytes = readFileSync(tarballPath);
     validateTarballDigests(receipt, tarballBytes);
     checks.push({ name: "tarball-digests", status: "PASS" });
-    const archiveFiles = readTarballFiles(tarballBytes);
-    validateArchiveIdentity(receipt, archiveFiles, packageJson);
+    const archive = readTarballFiles(tarballBytes);
+    validateArchiveIdentity(receipt, archive, packageJson);
     checks.push({ name: "archive-identity", status: "PASS" });
 
     const consumerRoot = join(temporaryDirectory, "consumer");
@@ -593,8 +623,8 @@ export async function runReleaseChecks({ repoRoot = DEFAULT_REPO_ROOT, requireCl
     );
 
     const installedRoot = join(consumerRoot, "node_modules", packageJson.name);
-    const installedFiles = enumerateInstalledFiles(installedRoot, archiveFiles.keys());
-    validateInstalledIdentity(installedFiles, archiveFiles, packageJson);
+    const installedFiles = enumerateInstalledFiles(installedRoot, archive.files.keys());
+    validateInstalledIdentity(installedFiles, archive.files, packageJson);
     checks.push({ name: "installed-tree", status: "PASS" });
     scanPublicBytes(installedFiles);
     checks.push({ name: "public-bytes", status: "PASS" });

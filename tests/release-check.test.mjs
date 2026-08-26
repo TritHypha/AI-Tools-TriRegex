@@ -52,6 +52,9 @@ for (const [label, path, expected] of [
   ["test-suffixed JavaScript", "dist/regression.test.js", /test|artifact/i],
   ["spec-suffixed JavaScript", "dist/regression.spec.js", /test|artifact/i],
   ["nested __tests__", "dist/__tests__/fixture.js", /test|artifact/i],
+  ["nested spec directory", "dist/spec/fixture.js", /test|artifact/i],
+  ["nested specs directory", "dist/specs/fixture.js", /test|artifact/i],
+  ["nested __specs__ directory", "dist/__specs__/fixture.js", /test|artifact/i],
   ["source maps", "dist/index.js.map", /source|map|artifact/i],
   ["MTS source", "dist/source.mts", /source|artifact/i],
   ["CTS source", "dist/source.cts", /source|artifact/i],
@@ -79,8 +82,10 @@ for (const [label, localPath] of [
   ["macOS user path", "/Users/owner/project/secret"],
   ["Linux home path", "/home/owner/project/secret"],
   ["POSIX temporary path", "/tmp/triregex/secret"],
+  ["workspace path", "/workspace/owner/private.txt"],
+  ["service path", "/srv/triregex/private.txt"],
+  ["data path", "/data/owner/private.txt"],
   ["UNC path", "\\\\server\\share\\owner\\secret"],
-  ["forward-slash UNC path", "//server/share/owner/secret"],
 ]) {
   test(`scanPublicBytes refuses a ${label}`, () => {
     assert.throws(
@@ -90,14 +95,24 @@ for (const [label, localPath] of [
   });
 }
 
-test("scanPublicBytes preserves URLs and repository-relative paths", () => {
+test("scanPublicBytes preserves URLs, operators, and repository-relative paths", () => {
   assert.doesNotThrow(() =>
     scanPublicBytes(
       new Map([
         [
           "README.md",
-          "https://example.invalid/home/owner docs/README.md ./dist/index.js ../CHANGELOG.md",
+          "https://example.invalid/home/owner //cdn.example.invalid/assets/file.js docs/README.md ./dist/index.js ../CHANGELOG.md ratio=1/2 value / other",
         ],
+      ]),
+    ),
+  );
+});
+
+test("scanPublicBytes preserves JavaScript regex literals and regex examples in comments", () => {
+  assert.doesNotThrow(() =>
+    scanPublicBytes(
+      new Map([
+        ["dist/parser.js", "// /[\\b]/ is a regex example\nif (/[a-zA-Z]/.test(value)) return;"],
       ]),
     ),
   );
@@ -316,7 +331,7 @@ function createNpmMutationCli(fixtureRoot, mutation) {
   writeFixtureFile(
     packageRoot,
     "bin/npm-cli.js",
-    `import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";\nimport { join } from "node:path";\nimport { spawnSync } from "node:child_process";\nconst mutation = ${JSON.stringify(mutation)};\nconst realCli = process.env.TRIREGEX_TEST_REAL_NPM_CLI;\nconst args = process.argv.slice(2);\nconst child = spawnSync(process.execPath, [realCli, ...args], { cwd: process.cwd(), env: { ...process.env, npm_execpath: realCli }, encoding: "utf8", maxBuffer: 4 * 1024 * 1024, timeout: 120_000, windowsHide: true });\nlet stdout = child.stdout ?? "";\nif (child.status === 0 && args[0] === "pack" && args.includes("--json")) {\n  const parsed = JSON.parse(stdout);\n  const receipt = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];\n  if (mutation === "wrong-key") stdout = JSON.stringify({ unexpected: receipt });\n  if (mutation === "bad-shasum") { receipt.shasum = "0".repeat(40); stdout = JSON.stringify(parsed); }\n  if (mutation === "bad-integrity") { receipt.integrity = \`sha512-\${Buffer.alloc(64).toString("base64")}\`; stdout = JSON.stringify(parsed); }\n  if (mutation === "archive-list") { const entry = receipt.files.find((file) => file.path === "dist/helper.js"); entry.path = "dist/extra.js"; stdout = JSON.stringify(parsed); }\n}\nif (child.status === 0 && args[0] === "install") {\n  const manifestPath = join(process.cwd(), "node_modules", "triregex", "package.json");\n  if (mutation === "installed-manifest" && existsSync(manifestPath)) { const manifest = JSON.parse(readFileSync(manifestPath, "utf8")); manifest.version = "9.9.9"; writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\\n"); }\n  if (mutation === "installed-extra" && existsSync(manifestPath)) writeFileSync(join(process.cwd(), "node_modules", "triregex", "EXTRA.md"), "extra\\n");\n  if (mutation === "installed-directory" && existsSync(manifestPath)) mkdirSync(join(process.cwd(), "node_modules", "triregex", "EMPTY"));\n}\nif (stdout.length > 0) process.stdout.write(stdout);\nif ((child.stderr ?? "").length > 0) process.stderr.write(child.stderr);\nprocess.exitCode = child.status ?? 1;\n`,
+    `import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";\nimport { join } from "node:path";\nimport { spawnSync } from "node:child_process";\nimport { createHash } from "node:crypto";\nimport { gunzipSync, gzipSync } from "node:zlib";\nconst mutation = ${JSON.stringify(mutation)};\nconst realCli = process.env.TRIREGEX_TEST_REAL_NPM_CLI;\nconst args = process.argv.slice(2);\nconst child = spawnSync(process.execPath, [realCli, ...args], { cwd: process.cwd(), env: { ...process.env, npm_execpath: realCli }, encoding: "utf8", maxBuffer: 4 * 1024 * 1024, timeout: 120_000, windowsHide: true });\nlet stdout = child.stdout ?? "";\nfunction tarDirectoryHeader(path) {\n  const header = Buffer.alloc(512);\n  header.write(path, 0, 100, "utf8");\n  header.write("0000755\\0", 100, 8, "ascii");\n  header.write("0000000\\0", 108, 8, "ascii");\n  header.write("0000000\\0", 116, 8, "ascii");\n  header.write("00000000000\\0", 124, 12, "ascii");\n  header.write("00000000000\\0", 136, 12, "ascii");\n  header.fill(32, 148, 156);\n  header[156] = "5".charCodeAt(0);\n  header.write("ustar\\0", 257, 6, "ascii");\n  header.write("00", 263, 2, "ascii");\n  let sum = 0; for (const byte of header) sum += byte;\n  header.write(sum.toString(8).padStart(6, "0") + "\\0 ", 148, 8, "ascii");\n  return header;\n}\nfunction addTarDirectory(receipt, path) {\n  const destinationIndex = args.indexOf("--pack-destination");\n  const destination = args[destinationIndex + 1];\n  const tarballPath = join(destination, receipt.filename);\n  const archive = gunzipSync(readFileSync(tarballPath));\n  let end = 0;\n  while (end + 512 <= archive.length && !archive.subarray(end, end + 512).every((byte) => byte === 0)) {\n    const sizeText = archive.subarray(end + 124, end + 136).toString("ascii").replace(/\\0.*$/, "").trim();\n    const size = sizeText.length === 0 ? 0 : Number.parseInt(sizeText, 8);\n    end += 512 + Math.ceil(size / 512) * 512;\n  }\n  const header = tarDirectoryHeader(path);\n  const changed = Buffer.concat([archive.subarray(0, end), header, archive.subarray(end)]);\n  const compressed = gzipSync(changed);\n  writeFileSync(tarballPath, compressed);\n  receipt.size = compressed.length;\n  receipt.shasum = createHash("sha1").update(compressed).digest("hex");\n  receipt.integrity = "sha512-" + createHash("sha512").update(compressed).digest("base64");\n}\nif (child.status === 0 && args[0] === "pack" && args.includes("--json")) {\n  const parsed = JSON.parse(stdout);\n  const receipt = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0];\n  if (mutation === "wrong-key") stdout = JSON.stringify({ unexpected: receipt });\n  if (mutation === "bad-shasum") { receipt.shasum = "0".repeat(40); stdout = JSON.stringify(parsed); }\n  if (mutation === "bad-integrity") { receipt.integrity = \`sha512-\${Buffer.alloc(64).toString("base64")}\`; stdout = JSON.stringify(parsed); }\n  if (mutation === "archive-list") { const entry = receipt.files.find((file) => file.path === "dist/helper.js"); entry.path = "dist/extra.js"; stdout = JSON.stringify(parsed); }\n  const tarDirectories = { "tar-dir-traversal": "package/../../outside/", "tar-dir-empty": "package//unexpected/", "tar-dir-drive": "package/C:outside/", "tar-dir-unexpected": "package/unexpected/" };\n  if (tarDirectories[mutation]) { addTarDirectory(receipt, tarDirectories[mutation]); stdout = JSON.stringify(parsed); }\n}\nif (child.status === 0 && args[0] === "install") {\n  const manifestPath = join(process.cwd(), "node_modules", "triregex", "package.json");\n  if (mutation === "installed-manifest" && existsSync(manifestPath)) { const manifest = JSON.parse(readFileSync(manifestPath, "utf8")); manifest.version = "9.9.9"; writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\\n"); }\n  if (mutation === "installed-extra" && existsSync(manifestPath)) writeFileSync(join(process.cwd(), "node_modules", "triregex", "EXTRA.md"), "extra\\n");\n  if (mutation === "installed-directory" && existsSync(manifestPath)) mkdirSync(join(process.cwd(), "node_modules", "triregex", "EMPTY"));\n}\nif (stdout.length > 0) process.stdout.write(stdout);\nif ((child.stderr ?? "").length > 0) process.stderr.write(child.stderr);\nprocess.exitCode = child.status ?? 1;\n`,
   );
   return cliPath;
 }
@@ -370,6 +385,17 @@ test("runReleaseChecks refuses a receipt list that differs from the archive", as
   await runMutationFailure("archive-list", "PACK_ARCHIVE_FILE_SET_MISMATCH");
 });
 
+for (const [label, mutation, expectedError] of [
+  ["traversing TAR directory", "tar-dir-traversal", "PACK_ARCHIVE_INVALID"],
+  ["TAR directory with an empty segment", "tar-dir-empty", "PACK_ARCHIVE_INVALID"],
+  ["drive-qualified TAR directory", "tar-dir-drive", "PACK_ARCHIVE_INVALID"],
+  ["unexpected canonical TAR directory", "tar-dir-unexpected", "PACK_ARCHIVE_DIRECTORY_SET_MISMATCH"],
+]) {
+  test(`runReleaseChecks refuses a ${label}`, async () => {
+    await runMutationFailure(mutation, expectedError);
+  });
+}
+
 test("runReleaseChecks refuses an installed manifest identity mismatch", async () => {
   await runMutationFailure("installed-manifest", "INSTALLED_PACKAGE_IDENTITY_MISMATCH");
 });
@@ -382,7 +408,7 @@ test("runReleaseChecks refuses an unexpected installed package directory", async
   await runMutationFailure("installed-directory", "INSTALLED_PACKAGE_FILE_SET_MISMATCH");
 });
 
-test("runReleaseChecks uses safe npm resolution and completes both real consumers", async () => {
+test("runReleaseChecks accepts valid archive directories, uses safe npm resolution, and completes both real consumers", async () => {
   await withFixture(
     { withCompiler: true, directoryName: "repo & hostile" },
     async ({ fixtureRoot, fixtureRepo }) => {
