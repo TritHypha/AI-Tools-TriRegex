@@ -208,21 +208,130 @@ function regexLiteralEnd(text, start) {
   return -1;
 }
 
-function containsAbsolutePosixPath(text) {
-  for (let index = 0; index < text.length; index += 1) {
-    if (text[index] !== "/" || text[index + 1] === "/") continue;
-    if (index > 0 && !/[\s=([{,:;"']/.test(text[index - 1])) continue;
+function regexModeNotationEnd(text, start) {
+  const flags = new Set();
+  let end = start + 1;
+  while (end < text.length && /[dgimsuvy]/.test(text[end])) {
+    if (flags.has(text[end])) return -1;
+    flags.add(text[end]);
+    end += 1;
+  }
+  if (flags.size === 0 || !text.startsWith(" mode", end)) return -1;
+  const notationEnd = end + " mode".length;
+  if (notationEnd < text.length && /[A-Za-z0-9_]/.test(text[notationEnd])) return -1;
+  return notationEnd;
+}
 
-    const regexEnd = regexLiteralEnd(text, index);
-    if (regexEnd !== -1) {
-      index = regexEnd - 1;
-      continue;
+function containsAbsolutePosixPath(text, artifactPath) {
+  const allowsRegexLiterals = artifactPath.endsWith(".js");
+  const hasJavaScriptLexicalContexts = allowsRegexLiterals || artifactPath.endsWith(".d.ts");
+  let javascriptContext = "code";
+  let escaped = false;
+  const templateExpressionDepths = [];
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (hasJavaScriptLexicalContexts) {
+      if (javascriptContext === "line-comment") {
+        if (char === "\n" || char === "\r") javascriptContext = "code";
+      } else if (javascriptContext === "block-comment") {
+        if (char === "*" && next === "/") {
+          javascriptContext = "code";
+          index += 1;
+          continue;
+        }
+      } else if (
+        javascriptContext === "single-quoted" ||
+        javascriptContext === "double-quoted" ||
+        javascriptContext === "template"
+      ) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (char === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (javascriptContext === "template" && char === "$" && next === "{") {
+          templateExpressionDepths.push(1);
+          javascriptContext = "code";
+          index += 1;
+          continue;
+        }
+        const closingQuote = javascriptContext === "single-quoted"
+          ? "'"
+          : javascriptContext === "double-quoted"
+            ? '"'
+            : "`";
+        if (char === closingQuote) {
+          javascriptContext = "code";
+          continue;
+        }
+      } else {
+        if (char === "'") {
+          javascriptContext = "single-quoted";
+          continue;
+        }
+        if (char === '"') {
+          javascriptContext = "double-quoted";
+          continue;
+        }
+        if (char === "`") {
+          javascriptContext = "template";
+          continue;
+        }
+        if (char === "/" && next === "/") {
+          javascriptContext = "line-comment";
+          index += 1;
+          continue;
+        }
+        if (char === "/" && next === "*") {
+          javascriptContext = "block-comment";
+          index += 1;
+          continue;
+        }
+        if (templateExpressionDepths.length > 0 && char === "{") {
+          templateExpressionDepths[templateExpressionDepths.length - 1] += 1;
+          continue;
+        }
+        if (templateExpressionDepths.length > 0 && char === "}") {
+          const depthIndex = templateExpressionDepths.length - 1;
+          templateExpressionDepths[depthIndex] -= 1;
+          if (templateExpressionDepths[depthIndex] === 0) {
+            templateExpressionDepths.pop();
+            javascriptContext = "template";
+          }
+          continue;
+        }
+      }
+    }
+
+    if (text[index] !== "/" || text[index + 1] === "/") continue;
+    if (index > 0 && !/[\s=([{,:;"'`<>]/.test(text[index - 1])) continue;
+
+    if (javascriptContext === "line-comment" || javascriptContext === "block-comment") {
+      const notationEnd = regexModeNotationEnd(text, index);
+      if (notationEnd !== -1) {
+        index = notationEnd - 1;
+        continue;
+      }
+    }
+
+    if (allowsRegexLiterals && javascriptContext === "code") {
+      const regexEnd = regexLiteralEnd(text, index);
+      if (regexEnd !== -1) {
+        index = regexEnd - 1;
+        continue;
+      }
     }
 
     let end = index + 1;
-    if (end >= text.length || !/[A-Za-z0-9._~:@%+,-]/.test(text[end])) continue;
-    while (end < text.length && /[A-Za-z0-9._~:@%+,\/-]/.test(text[end])) end += 1;
-    if (end === text.length || /[\s"')\]},;]/.test(text[end])) return true;
+    if (end >= text.length || !/[A-Za-z0-9._~:@%+,&-]/.test(text[end])) continue;
+    while (end < text.length && /[A-Za-z0-9._~:@%+,&\/-]/.test(text[end])) end += 1;
+    if (end === text.length || /[\s"'`)\]},;<>]/.test(text[end])) return true;
   }
   return false;
 }
@@ -254,7 +363,7 @@ export function scanPublicBytes(filesByPath) {
     if (
       /(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/m.test(text) ||
       /(?:^|[\s"'(=])\\\\[^\\/\r\n]+[\\/][^\\/\r\n]+/m.test(text) ||
-      containsAbsolutePosixPath(text)
+      containsAbsolutePosixPath(text, path)
     ) {
       throw new Error(`absolute local path refused in public bytes: ${path}`);
     }

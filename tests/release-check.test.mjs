@@ -104,6 +104,10 @@ for (const [label, localPath] of [
   ["comma-delimited path", "value,/var/lib/private.txt"],
   ["colon-delimited path", "value:/tmp/triregex/private.txt"],
   ["quoted single-component path", "path='/private'"],
+  ["regex-shaped POSIX path in prose", "root=/tmp/g"],
+  ["Markdown-backtick-delimited path", "`/home/owner/private.txt`"],
+  ["greater-than-delimited path", "root=>/home/owner/private.txt"],
+  ["ampersand-bearing filename path", "/home/owner/key&notes"],
 ]) {
   test(`scanPublicBytes refuses a ${label}`, () => {
     assert.throws(
@@ -132,12 +136,38 @@ test("scanPublicBytes preserves JavaScript regex literals and regex examples in 
       new Map([
         [
           "dist/parser.js",
-          "// /[\\b]/ is a regex example\nif (/[a-zA-Z/]+/giu.test(value) || /a\\\\/b/g.test(value) || /https?:\\\\/\\\\//i.test(value)) return;",
+          "// /[\\b]/ is a regex example\nif (/tmp/g.test(value) || /[a-zA-Z/]+/giu.test(value) || /a\\\\/b/g.test(value) || /https?:\\\\/\\\\//i.test(value)) return;",
         ],
       ]),
     ),
   );
 });
+
+test("scanPublicBytes preserves JavaScript regex-mode notation in source comments", () => {
+  assert.doesNotThrow(() =>
+    scanPublicBytes(
+      new Map([
+        ["dist/compile.js", "// JavaScript /u mode uses Unicode semantics."],
+        ["dist/compile.d.ts", "/** JavaScript /u mode uses Unicode semantics. */"],
+      ]),
+    ),
+  );
+});
+
+for (const [label, source] of [
+  ["double-quoted JavaScript path string", 'const root = "/tmp/g";'],
+  ["single-quoted JavaScript path string", "const root = '/home/owner/private.txt';"],
+  ["template-literal JavaScript path string", "const root = `/tmp/g`;"],
+  ["JavaScript line-comment path", "// root=/tmp/g\nexport {};"],
+  ["JavaScript block-comment path", "/* root=/tmp/g */\nexport {};"],
+]) {
+  test(`scanPublicBytes refuses a ${label}`, () => {
+    assert.throws(
+      () => scanPublicBytes(new Map([["dist/runtime.js", source]])),
+      /absolute local path/i,
+    );
+  });
+}
 
 test("scanPublicBytes preserves division, division assignment, ratios, and relative paths", () => {
   assert.doesNotThrow(() =>
