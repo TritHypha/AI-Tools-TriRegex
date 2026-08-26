@@ -95,6 +95,24 @@ for (const [label, localPath] of [
   });
 }
 
+for (const [label, localPath] of [
+  ["assignment-delimited workspace path", "root=/workspace/owner/private.txt"],
+  ["parenthesized service path", "(/srv/triregex/private.txt)"],
+  ["single-component POSIX path", "/secret"],
+  ["square-bracket-delimited path", "value=[/data/owner/private.txt]"],
+  ["brace-delimited path", "value={/opt/triregex/private.txt}"],
+  ["comma-delimited path", "value,/var/lib/private.txt"],
+  ["colon-delimited path", "value:/tmp/triregex/private.txt"],
+  ["quoted single-component path", "path='/private'"],
+]) {
+  test(`scanPublicBytes refuses a ${label}`, () => {
+    assert.throws(
+      () => scanPublicBytes(new Map([["README.md", localPath]])),
+      /absolute local path/i,
+    );
+  });
+}
+
 test("scanPublicBytes preserves URLs, operators, and repository-relative paths", () => {
   assert.doesNotThrow(() =>
     scanPublicBytes(
@@ -112,7 +130,20 @@ test("scanPublicBytes preserves JavaScript regex literals and regex examples in 
   assert.doesNotThrow(() =>
     scanPublicBytes(
       new Map([
-        ["dist/parser.js", "// /[\\b]/ is a regex example\nif (/[a-zA-Z]/.test(value)) return;"],
+        [
+          "dist/parser.js",
+          "// /[\\b]/ is a regex example\nif (/[a-zA-Z/]+/giu.test(value) || /a\\\\/b/g.test(value) || /https?:\\\\/\\\\//i.test(value)) return;",
+        ],
+      ]),
+    ),
+  );
+});
+
+test("scanPublicBytes preserves division, division assignment, ratios, and relative paths", () => {
+  assert.doesNotThrow(() =>
+    scanPublicBytes(
+      new Map([
+        ["dist/runtime.js", "const ratio = 1/2; total = value / count; total /= 2; const files = './dist/index.js ../CHANGELOG.md';"],
       ]),
     ),
   );

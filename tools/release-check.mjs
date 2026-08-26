@@ -163,6 +163,70 @@ export function validatePackFiles(files) {
   return { fileCount: files.length, totalUnpackedSize: totalSize };
 }
 
+function regexLiteralEnd(text, start) {
+  let escaped = false;
+  let inClass = false;
+  let hasPattern = false;
+  for (let index = start + 1; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "\n" || char === "\r") return -1;
+    if (escaped) {
+      escaped = false;
+      hasPattern = true;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      hasPattern = true;
+      continue;
+    }
+    if (char === "[" && !inClass) {
+      inClass = true;
+      hasPattern = true;
+      continue;
+    }
+    if (char === "]" && inClass) {
+      inClass = false;
+      continue;
+    }
+    if (char !== "/" || inClass) {
+      hasPattern = true;
+      continue;
+    }
+    if (!hasPattern) return -1;
+
+    const flags = new Set();
+    let end = index + 1;
+    while (end < text.length && /[dgimsuvy]/.test(text[end])) {
+      if (flags.has(text[end])) return -1;
+      flags.add(text[end]);
+      end += 1;
+    }
+    if (end < text.length && !/[\s.,;:)\]}!?&|=<>+*%-]/.test(text[end])) return -1;
+    return end;
+  }
+  return -1;
+}
+
+function containsAbsolutePosixPath(text) {
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] !== "/" || text[index + 1] === "/") continue;
+    if (index > 0 && !/[\s=([{,:;"']/.test(text[index - 1])) continue;
+
+    const regexEnd = regexLiteralEnd(text, index);
+    if (regexEnd !== -1) {
+      index = regexEnd - 1;
+      continue;
+    }
+
+    let end = index + 1;
+    if (end >= text.length || !/[A-Za-z0-9._~:@%+,-]/.test(text[end])) continue;
+    while (end < text.length && /[A-Za-z0-9._~:@%+,\/-]/.test(text[end])) end += 1;
+    if (end === text.length || /[\s"')\]},;]/.test(text[end])) return true;
+  }
+  return false;
+}
+
 export function scanPublicBytes(filesByPath) {
   if (!(filesByPath instanceof Map)) {
     throw new TypeError("public files must be provided as a Map");
@@ -190,7 +254,7 @@ export function scanPublicBytes(filesByPath) {
     if (
       /(?:^|[^A-Za-z0-9])[A-Za-z]:[\\/]/m.test(text) ||
       /(?:^|[\s"'(=])\\\\[^\\/\r\n]+[\\/][^\\/\r\n]+/m.test(text) ||
-      /(?:^|[\s"'])\/(?!\/)[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~:@%+,-]+)+(?=$|[\s"')\],;])/m.test(text)
+      containsAbsolutePosixPath(text)
     ) {
       throw new Error(`absolute local path refused in public bytes: ${path}`);
     }
