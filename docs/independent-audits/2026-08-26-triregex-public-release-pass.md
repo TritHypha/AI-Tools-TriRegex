@@ -13,9 +13,12 @@ Date: 2026-08-26
 - Review report: independent model-diverse exact-revision review of the approved
   public-release design and implementation plan, including source, package,
   controlled-red, LF/CRLF, release-check, and custody evidence.
+- Dispatched review task: `/root/triregex_release_final_review`; execution model
+  `gpt-5.5`, reasoning `xhigh`. These controller-supplied dispatch details do
+  not independently authenticate provider identity.
 
 The cumulative changed set from the review base through the audited target is
-exactly:
+exactly 17 paths:
 
 ```text
 A .github/workflows/ci.yml
@@ -30,6 +33,7 @@ A docs/RELEASING.md
 A docs/plans/2026-08-26-triregex-public-release-design.md
 A docs/superpowers/plans/2026-08-26-triregex-public-release.md
 M package.json
+M src/index.ts
 D tests/.myco/index.json
 A tests/public-release.test.mjs
 A tests/release-check.test.mjs
