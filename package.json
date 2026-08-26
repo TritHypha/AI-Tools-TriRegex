@@ -21,7 +21,8 @@
     "url": "https://github.com/TritHypha/AI-Tools-TriRegex/issues"
   },
   "files": [
-    "dist",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
     "README.md",
     "AUDIT.md",
     "SECURITY.md",
