@@ -1,5 +1,7 @@
 // =============================================================================
-// TriRegex — ternary streaming pattern matching, ReDoS-immune by construction.
+// TriRegex — ternary streaming pattern matching for a supported subset.
+// The supported engine is non-backtracking and bounded by a compile-time cost
+// certificate; unsupported or over-budget patterns fail closed.
 // Public API. Provenance: dp-rd-0459 (defensive publication).
 // Contact hello@trithypha.dev · Apache-2.0.
 // =============================================================================

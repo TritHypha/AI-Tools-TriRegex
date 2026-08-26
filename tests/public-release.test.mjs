@@ -26,9 +26,18 @@ const PUBLIC_DOCUMENTS = [
   "CONTRIBUTING.md",
   "docs/RELEASING.md",
 ];
+const ABSOLUTE_REDOS_IMMUNITY_CLAIM = /\bReDoS[-\s]+immune\b/i;
 
 function readPublicDocument(relativePath) {
   return readFileSync(join(repositoryRoot, relativePath), "utf8");
+}
+
+function assertNoAbsoluteRedosImmunityClaim(surface, content) {
+  assert.doesNotMatch(
+    content,
+    ABSOLUTE_REDOS_IMMUNITY_CLAIM,
+    `${surface} makes a prohibited absolute ReDoS-immunity claim`,
+  );
 }
 
 test("public release documentation keeps the required release contract", () => {
@@ -84,6 +93,14 @@ test("package metadata exposes the canonical npm entry points", () => {
     default: "./dist/index.js",
   });
   assert.equal(Object.keys(pkg.dependencies ?? {}).length, 0);
+});
+
+test("published package surfaces avoid absolute ReDoS-immunity claims", () => {
+  const pkg = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
+
+  assertNoAbsoluteRedosImmunityClaim("package metadata", pkg.description);
+  assertNoAbsoluteRedosImmunityClaim("source API banner", readFileSync(join(repositoryRoot, "src", "index.ts"), "utf8"));
+  assertNoAbsoluteRedosImmunityClaim("emitted package entry", readFileSync(join(repositoryRoot, "dist", "index.js"), "utf8"));
 });
 
 test("release tree excludes generated myco indexes", () => {
