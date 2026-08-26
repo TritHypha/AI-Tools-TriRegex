@@ -232,10 +232,22 @@ function parsePackReceipt(stdout, expectedPackage) {
   } catch {
     throw new ReleaseCheckError("PACK_RECEIPT_INVALID_JSON");
   }
-  if (!Array.isArray(parsed) || parsed.length !== 1 || parsed[0] === null || typeof parsed[0] !== "object") {
+  let receipts;
+  if (Array.isArray(parsed)) {
+    receipts = parsed;
+  } else if (parsed !== null && typeof parsed === "object") {
+    const entries = Object.entries(parsed);
+    if (entries.length !== 1 || entries[0][0] !== expectedPackage.name) {
+      throw new ReleaseCheckError("PACK_RECEIPT_INVALID_SHAPE");
+    }
+    receipts = [entries[0][1]];
+  } else {
     throw new ReleaseCheckError("PACK_RECEIPT_INVALID_SHAPE");
   }
-  const receipt = parsed[0];
+  if (receipts.length !== 1 || receipts[0] === null || typeof receipts[0] !== "object") {
+    throw new ReleaseCheckError("PACK_RECEIPT_INVALID_SHAPE");
+  }
+  const receipt = receipts[0];
   if (
     receipt.name !== expectedPackage.name ||
     receipt.version !== expectedPackage.version ||
