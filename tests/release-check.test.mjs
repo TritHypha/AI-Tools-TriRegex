@@ -387,7 +387,7 @@ function createNpmMutationCli(fixtureRoot, mutation) {
   writeFixtureFile(
     packageRoot,
     "package.json",
-    `${JSON.stringify({ name: "npm", version: "0.0.0-test", bin: { npm: "bin/npm-cli.js" } })}\n`,
+    `${JSON.stringify({ name: "npm", version: "0.0.0-test", type: "module", bin: { npm: "bin/npm-cli.js" } })}\n`,
   );
   writeFixtureFile(
     packageRoot,
